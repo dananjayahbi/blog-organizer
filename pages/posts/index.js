@@ -20,20 +20,24 @@ import {
   Chip,
   Alert,
   Snackbar,
-  CircularProgress
+  CircularProgress,
+  Switch,
+  FormControlLabel,
+  FormGroup
 } from '@mui/material';
 import { 
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Visibility as ViewIcon
+  Visibility as ViewIcon,
+  Publish as PublishIcon
 } from '@mui/icons-material';
 import Layout from '../../components/Layout';
 import { useBlogContext } from '../../components/BlogContext';
 import { useRouter } from 'next/router';
 
 export default function Posts() {
-  const { posts, loading, error, deletePost } = useBlogContext();
+  const { posts, loading, error, deletePost, updatePost } = useBlogContext();
   const router = useRouter();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -41,6 +45,9 @@ export default function Posts() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [postToDelete, setPostToDelete] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+  const [currentPost, setCurrentPost] = useState(null);
+  const [isPublished, setIsPublished] = useState(false);
 
   // Handle page change
   const handleChangePage = (event, newPage) => {
@@ -91,6 +98,42 @@ export default function Posts() {
         message: 'Error deleting post: ' + err.message, 
         severity: 'error' 
       });
+    }
+  };
+
+  // Open status edit dialog
+  const handleStatusEditClick = (post) => {
+    setCurrentPost(post);
+    setIsPublished(post.status === 'published');
+    setIsStatusDialogOpen(true);
+  };
+
+  // Close status dialog
+  const handleCloseStatusDialog = () => {
+    setIsStatusDialogOpen(false);
+    setCurrentPost(null);
+  };
+
+  // Update status
+  const handleStatusUpdate = async () => {
+    if (currentPost) {
+      try {
+        const newStatus = isPublished ? 'published' : 'draft';
+        await updatePost(currentPost.id, { status: newStatus });
+        setSnackbar({ 
+          open: true, 
+          message: `Post status updated to ${newStatus}`, 
+          severity: 'success' 
+        });
+      } catch (err) {
+        setSnackbar({ 
+          open: true, 
+          message: 'Error updating post status: ' + err.message, 
+          severity: 'error' 
+        });
+      }
+      setIsStatusDialogOpen(false);
+      setCurrentPost(null);
     }
   };
 
@@ -181,11 +224,21 @@ export default function Posts() {
                             {post.title}
                           </TableCell>
                           <TableCell>
-                            <Chip 
-                              label={post.status || 'draft'}
-                              color={post.status === 'published' ? 'success' : 'default'}
-                              size="small"
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Chip 
+                                label={post.status || 'draft'}
+                                color={post.status === 'published' ? 'success' : 'default'}
+                                size="small"
+                                sx={{ mr: 1 }}
+                              />
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleStatusEditClick(post)}
+                                title="Change Status"
+                              >
+                                <PublishIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -262,6 +315,35 @@ export default function Posts() {
             <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleDeleteConfirm} color="error" autoFocus>
               Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+        
+        {/* Status Update Dialog */}
+        <Dialog open={isStatusDialogOpen} onClose={handleCloseStatusDialog}>
+          <DialogTitle>Update Post Status</DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 1 }}>
+              <Typography variant="body1" gutterBottom>
+                {currentPost?.title}
+              </Typography>
+              <FormGroup>
+                <FormControlLabel 
+                  control={
+                    <Switch 
+                      checked={isPublished}
+                      onChange={(e) => setIsPublished(e.target.checked)}
+                    />
+                  } 
+                  label={isPublished ? "Published" : "Draft"}
+                />
+              </FormGroup>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseStatusDialog}>Cancel</Button>
+            <Button onClick={handleStatusUpdate} color="primary" variant="contained">
+              Update
             </Button>
           </DialogActions>
         </Dialog>
