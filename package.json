@@ -1,0 +1,58 @@
+{
+  "name": "blog-organizer",
+  "version": "1.0.0",
+  "description": "A desktop application for managing blog post drafts",
+  "main": "main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev:next": "next dev",
+    "dev:electron": "electron .",
+    "build": "next build && next export -o renderer/out",
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^5.17.1",
+    "@mui/material": "^5.17.1",
+    "date-fns": "^2.30.0",
+    "marked": "^9.1.6",
+    "next": "^13.4.19",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^26.6.10",
+    "electron-builder": "^24.13.3",
+    "electron-serve": "^1.1.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.blog-organizer.app",
+    "productName": "Blog Post Draft Manager",
+    "files": [
+      "main",
+      "renderer/out/**",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
