@@ -1,4 +1,5 @@
 import '../styles/globals.css';
+import '../styles/editor.css';
 import { CssBaseline, ThemeProvider as MuiThemeProvider } from '@mui/material';
 import { BlogProvider } from '../components/BlogContext';
 import { ThemeProvider, useThemeContext } from '../components/ThemeContext';
