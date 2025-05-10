@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   TextField, 
@@ -26,6 +26,43 @@ export default function PostEditor({ post, onSave, onCancel }) {
   const [tags, setTags] = useState(post?.tags || []);
   const [images, setImages] = useState(post?.images || []);
   const [isPreview, setIsPreview] = useState(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [lastSaved, setLastSaved] = useState(null);
+  
+  // Load auto-save setting from localStorage
+  useEffect(() => {
+    const storedAutoSave = localStorage.getItem('autosave');
+    if (storedAutoSave !== null) {
+      setAutoSaveEnabled(storedAutoSave === 'true');
+    }
+  }, []);
+  
+  // Create savePost function with useCallback to prevent unnecessary recreations
+  const savePost = useCallback(() => {
+    const updatedPost = {
+      ...post,
+      title,
+      content,
+      tags,
+      images
+    };
+    
+    onSave(updatedPost, true); // Pass true to indicate this is an auto-save
+    setLastSaved(new Date());
+  }, [post, title, content, tags, images, onSave]);
+  
+  // Set up auto-save timer
+  useEffect(() => {
+    if (!autoSaveEnabled) return;
+    
+    const timer = setTimeout(() => {
+      if (title.trim() && content.trim()) {
+        savePost();
+      }
+    }, 10000); // Auto-save after 10 seconds of inactivity
+    
+    return () => clearTimeout(timer);
+  }, [title, content, autoSaveEnabled, savePost]);
   
   // Parse markdown to HTML for preview
   const renderMarkdown = (text) => {
@@ -57,12 +94,12 @@ export default function PostEditor({ post, onSave, onCancel }) {
   // Handle image upload
   const handleImageUpload = async () => {
     try {
-      const imageFileName = await uploadImage();
-      if (imageFileName) {
+      const imageResult = await uploadImage();
+      if (imageResult && !imageResult.canceled) {
         // Add markdown image tag to content
-        const imageMarkdown = `\n![Image](${imageFileName})\n`;
+        const imageMarkdown = `\n![Image](${imageResult.fileName})\n`;
         setContent(prevContent => prevContent + imageMarkdown);
-        setImages([...images, imageFileName]);
+        setImages([...images, imageResult.fileName]);
       }
     } catch (error) {
       console.error("Error uploading image:", error);
@@ -130,6 +167,13 @@ export default function PostEditor({ post, onSave, onCancel }) {
       </Box>
       
       <Divider sx={{ my: 2 }} />
+      
+      {/* Auto-save indicator */}
+      {autoSaveEnabled && lastSaved && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          Auto-saved at {lastSaved.toLocaleTimeString()}
+        </Typography>
+      )}
       
       {/* Editor/Preview toggle */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>

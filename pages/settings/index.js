@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -17,21 +17,44 @@ import {
   Snackbar
 } from '@mui/material';
 import Layout from '../../components/Layout';
+import { useThemeContext } from '../../components/ThemeContext';
 
 export default function Settings() {
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode } = useThemeContext();
   const [autosave, setAutosave] = useState(true);
   const [defaultView, setDefaultView] = useState('preview');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const storedAutosave = localStorage.getItem('autosave');
+    const storedDefaultView = localStorage.getItem('defaultView');
+    
+    if (storedAutosave !== null) {
+      setAutosave(storedAutosave === 'true');
+    }
+    
+    if (storedDefaultView) {
+      setDefaultView(storedDefaultView);
+    }
+  }, []);
+
   // Handle settings save
   const handleSave = () => {
-    // Here you would save the settings to local storage or your backend
+    // Save settings to localStorage
+    localStorage.setItem('autosave', autosave);
+    localStorage.setItem('defaultView', defaultView);
+    
     setSnackbar({
       open: true,
       message: 'Settings saved successfully!',
       severity: 'success'
     });
+  };
+
+  // Handle dark mode toggle
+  const handleDarkModeToggle = () => {
+    toggleDarkMode();
   };
 
   // Close snackbar
@@ -57,7 +80,7 @@ export default function Settings() {
               <Switch
                 edge="end"
                 checked={darkMode}
-                onChange={(e) => setDarkMode(e.target.checked)}
+                onChange={handleDarkModeToggle}
               />
             </ListItem>
             

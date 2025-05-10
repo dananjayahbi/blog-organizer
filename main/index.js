@@ -48,7 +48,8 @@ function createWindow() {
   } else {
     // In development, load from the dev server
     mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
+    // Remove automatic opening of dev tools
+    // mainWindow.webContents.openDevTools();
   }
 
   mainWindow.on('closed', () => {

@@ -1,26 +1,25 @@
 import '../styles/globals.css';
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { CssBaseline, ThemeProvider as MuiThemeProvider } from '@mui/material';
 import { BlogProvider } from '../components/BlogContext';
+import { ThemeProvider, useThemeContext } from '../components/ThemeContext';
 
-// Create a theme instance
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-});
-
-function MyApp({ Component, pageProps }) {
+function AppContent({ Component, pageProps }) {
+  const { theme } = useThemeContext();
+  
   return (
-    <ThemeProvider theme={theme}>
+    <MuiThemeProvider theme={theme}>
       <CssBaseline />
       <BlogProvider>
         <Component {...pageProps} />
       </BlogProvider>
+    </MuiThemeProvider>
+  );
+}
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <ThemeProvider>
+      <AppContent Component={Component} pageProps={pageProps} />
     </ThemeProvider>
   );
 }

@@ -17,7 +17,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  useTheme
 } from '@mui/material';
 import { 
   Save as SaveIcon,
@@ -33,11 +34,14 @@ import { marked } from 'marked';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
 import { useBlogContext } from '../../../components/BlogContext';
+import { useThemeContext } from '../../../components/ThemeContext';
 
 export default function EditPost() {
   const router = useRouter();
   const { id } = router.query;
   const { posts, loading: postsLoading, error: postsError, updatePost, uploadImage } = useBlogContext();
+  const { darkMode } = useThemeContext();
+  const theme = useTheme();
   
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -435,13 +439,16 @@ export default function EditPost() {
                     minHeight: '600px', 
                     maxHeight: 'calc(100vh - 250px)',
                     overflow: 'auto',
-                    p: 2
+                    p: 2,
+                    backgroundColor: theme.palette.background.paper,
+                    color: theme.palette.text.primary
                   }}
+                  className={darkMode ? 'markdown-preview-dark' : 'markdown-preview'}
                 >
                   {content ? (
                     <div 
                       dangerouslySetInnerHTML={renderMarkdown(content)} 
-                      className="markdown-preview"
+                      className={darkMode ? 'markdown-preview-dark' : 'markdown-preview'}
                     />
                   ) : (
                     <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
@@ -455,9 +462,10 @@ export default function EditPost() {
                   maxHeight: 'calc(100vh - 250px)',
                   overflow: 'auto',
                   p: 2,
-                  bgcolor: '#f5f5f5',
+                  bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : '#f5f5f5',
                   fontFamily: 'monospace',
-                  whiteSpace: 'pre-wrap'
+                  whiteSpace: 'pre-wrap',
+                  color: theme.palette.text.primary
                 }}>
                   {content || (
                     <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
