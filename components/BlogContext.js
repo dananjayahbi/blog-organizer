@@ -135,11 +135,9 @@ export const BlogProvider = ({ children }) => {
   const uploadImage = async () => {
     try {
       if (window.electronAPI) {
+        // Return the complete result including filePath and fileName
         const result = await window.electronAPI.selectImage();
-        if (result.canceled) {
-          return null;
-        }
-        return result.fileName;
+        return result;
       }
       return null;
     } catch (err) {

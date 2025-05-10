@@ -1,0 +1,286 @@
+import { useState } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Button,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  TablePagination,
+  Chip,
+  Alert,
+  Snackbar,
+  CircularProgress
+} from '@mui/material';
+import { 
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Visibility as ViewIcon
+} from '@mui/icons-material';
+import Layout from '../../components/Layout';
+import { useBlogContext } from '../../components/BlogContext';
+import { useRouter } from 'next/router';
+
+export default function Posts() {
+  const { posts, loading, error, deletePost } = useBlogContext();
+  const router = useRouter();
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [postToDelete, setPostToDelete] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  // Handle page change
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  // Handle rows per page change
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  // Handle create new post
+  const handleCreatePost = () => {
+    router.push('/posts/editor');
+  };
+
+  // Handle edit post
+  const handleEditPost = (postId) => {
+    router.push(`/posts/editor/${postId}`);
+  };
+
+  // Handle view post details
+  const handleViewPost = (postId) => {
+    router.push(`/posts/view/${postId}`);
+  };
+
+  // Open delete confirmation dialog
+  const handleDeletePrompt = (postId) => {
+    setPostToDelete(postId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Handle post delete confirmation
+  const handleDeleteConfirm = async () => {
+    try {
+      await deletePost(postToDelete);
+      setIsDeleteDialogOpen(false);
+      setPostToDelete(null);
+      setSnackbar({ 
+        open: true, 
+        message: 'Post deleted successfully', 
+        severity: 'success' 
+      });
+    } catch (err) {
+      setSnackbar({ 
+        open: true, 
+        message: 'Error deleting post: ' + err.message, 
+        severity: 'error' 
+      });
+    }
+  };
+
+  // Close snackbar
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Filter posts based on search term
+  const filteredPosts = posts?.filter(post => 
+    post.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (post.tags && post.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
+  ) || [];
+
+  // Format date to readable string
+  const formatDate = (dateString) => {
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
+  return (
+    <Layout>
+      <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1">
+            Posts
+          </Typography>
+          <Button 
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={handleCreatePost}
+          >
+            Create New Post
+          </Button>
+        </Box>
+
+        {/* Show error if there's any */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        
+        {/* Search field */}
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            label="Search posts"
+            variant="outlined"
+            size="small"
+            fullWidth
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(0);
+            }}
+          />
+        </Box>
+
+        {/* Posts table */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+            <TableContainer>
+              <Table stickyHeader aria-label="posts table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Title</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Tags</TableCell>
+                    <TableCell>Last Updated</TableCell>
+                    <TableCell align="center">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredPosts.length > 0 ? (
+                    filteredPosts
+                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                      .map((post) => (
+                        <TableRow hover key={post.id}>
+                          <TableCell component="th" scope="row">
+                            {post.title}
+                          </TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={post.status || 'draft'}
+                              color={post.status === 'published' ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {post.tags && post.tags.length > 0 ? (
+                                post.tags.map((tag, index) => (
+                                  <Chip key={index} label={tag} size="small" />
+                                ))
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">
+                                  No tags
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell>{formatDate(post.updatedAt)}</TableCell>
+                          <TableCell align="center">
+                            <IconButton 
+                              size="small"
+                              onClick={() => handleViewPost(post.id)}
+                              title="View"
+                            >
+                              <ViewIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleEditPost(post.id)}
+                              title="Edit"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleDeletePrompt(post.id)}
+                              title="Delete"
+                              color="error"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        {searchTerm ? 'No results found' : 'No posts available'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              rowsPerPageOptions={[5, 10, 25]}
+              component="div"
+              count={filteredPosts.length}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+            />
+          </Paper>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={isDeleteDialogOpen}
+          onClose={() => setIsDeleteDialogOpen(false)}
+        >
+          <DialogTitle>Delete Post</DialogTitle>
+          <DialogContent>
+            Are you sure you want to delete this post? This action cannot be undone.
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleDeleteConfirm} color="error" autoFocus>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+        
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+        >
+          <Alert 
+            onClose={handleCloseSnackbar} 
+            severity={snackbar.severity} 
+            sx={{ width: '100%' }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Box>
+    </Layout>
+  );
+}

@@ -1,2 +1,8 @@
 node_modules
 public/images
+.next/
+.vscode
+.next/cache
+.next/server
+.next/static
+.next/trace
