@@ -10,10 +10,9 @@ const readdirAsync = promisify(fs.readdir);
 const statAsync = promisify(fs.stat);
 const unlinkAsync = promisify(fs.unlink);
 
-// Path to store blog post data and images
-const dataDir = path.join(app.getPath('userData'), 'posts');
-// Use public/images directory for storing images
-const imagesDir = path.join(__dirname, '../public/images');
+// Path to store blog post data - using project directory instead of userData
+const dataDir = path.join(__dirname, '..', 'data', 'posts');
+const imagesDir = path.join(__dirname, '..', 'public', 'images');
 
 // Ensure data directories exist
 const ensureDirectoriesExist = async () => {
