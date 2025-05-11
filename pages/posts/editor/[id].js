@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -23,6 +23,7 @@ export default function EditPost() {
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [post, setPost] = useState(null);
+  const editorRef = useRef(null);
 
   // Load post data when id is available
   useEffect(() => {
@@ -64,6 +65,14 @@ export default function EditPost() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle Update Post button click at the top
+  const handleUpdatePost = () => {
+    if (editorRef.current && editorRef.current.savePost) {
+      // Use the exposed savePost method directly
+      editorRef.current.savePost();
     }
   };
 
@@ -120,7 +129,7 @@ export default function EditPost() {
             variant="contained"
             color="primary"
             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-            onClick={() => document.getElementById('post-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))}
+            onClick={handleUpdatePost}
             disabled={loading}
           >
             Update Post
@@ -130,6 +139,7 @@ export default function EditPost() {
         {/* Editor Form */}
         <Box id="post-form">
           <PostEditor 
+            ref={editorRef}
             post={post}
             onSave={handleSave}
             onCancel={handleGoBack}

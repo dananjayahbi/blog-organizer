@@ -23,7 +23,8 @@ import {
   CircularProgress,
   Switch,
   FormControlLabel,
-  FormGroup
+  FormGroup,
+  Checkbox
 } from '@mui/material';
 import { 
   Add as AddIcon,
@@ -37,7 +38,7 @@ import { useBlogContext } from '../../components/BlogContext';
 import { useRouter } from 'next/router';
 
 export default function Posts() {
-  const { posts, loading, error, deletePost, updatePost } = useBlogContext();
+  const { posts, loading, error, deletePost, deleteMultiplePosts, updatePost } = useBlogContext();
   const router = useRouter();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -48,6 +49,10 @@ export default function Posts() {
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [currentPost, setCurrentPost] = useState(null);
   const [isPublished, setIsPublished] = useState(false);
+  // New state for bulk selection
+  const [selectedPosts, setSelectedPosts] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
 
   // Handle page change
   const handleChangePage = (event, newPage) => {
@@ -75,30 +80,97 @@ export default function Posts() {
     router.push(`/posts/view/${postId}`);
   };
 
-  // Open delete confirmation dialog
+  // Open delete confirmation dialog for a single post
   const handleDeletePrompt = (postId) => {
     setPostToDelete(postId);
+    setIsBulkDelete(false);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Open delete confirmation dialog for multiple posts
+  const handleBulkDeletePrompt = () => {
+    setIsBulkDelete(true);
     setIsDeleteDialogOpen(true);
   };
 
   // Handle post delete confirmation
   const handleDeleteConfirm = async () => {
     try {
-      await deletePost(postToDelete);
-      setIsDeleteDialogOpen(false);
-      setPostToDelete(null);
-      setSnackbar({ 
-        open: true, 
-        message: 'Post deleted successfully', 
-        severity: 'success' 
-      });
+      if (isBulkDelete) {
+        // Delete multiple posts
+        const result = await deleteMultiplePosts(selectedPosts);
+        setIsDeleteDialogOpen(false);
+        setSelectedPosts([]);
+        setSelectAll(false);
+        setSnackbar({ 
+          open: true, 
+          message: `${result.deletedCount} posts deleted successfully`, 
+          severity: 'success' 
+        });
+      } else {
+        // Delete a single post
+        await deletePost(postToDelete);
+        setIsDeleteDialogOpen(false);
+        setPostToDelete(null);
+        setSnackbar({ 
+          open: true, 
+          message: 'Post deleted successfully', 
+          severity: 'success' 
+        });
+      }
     } catch (err) {
       setSnackbar({ 
         open: true, 
-        message: 'Error deleting post: ' + err.message, 
+        message: 'Error deleting post(s): ' + err.message, 
         severity: 'error' 
       });
+      if (isBulkDelete) {
+        setSelectedPosts([]);
+        setSelectAll(false);
+      }
     }
+  };
+
+  // Toggle select all posts
+  const handleSelectAll = (event) => {
+    const checked = event.target.checked;
+    setSelectAll(checked);
+    
+    if (checked) {
+      // Get IDs of all posts on the current page
+      const visiblePosts = filteredPosts
+        .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+        .map(post => post.id);
+      setSelectedPosts(visiblePosts);
+    } else {
+      setSelectedPosts([]);
+    }
+  };
+
+  // Toggle select individual post
+  const handleSelectPost = (postId) => {
+    setSelectedPosts(prev => {
+      if (prev.includes(postId)) {
+        // Remove from selection
+        const newSelected = prev.filter(id => id !== postId);
+        setSelectAll(false);
+        return newSelected;
+      } else {
+        // Add to selection
+        const newSelected = [...prev, postId];
+        
+        // Check if all posts on the current page are now selected
+        const visiblePosts = filteredPosts
+          .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+          .map(post => post.id);
+        
+        if (visiblePosts.every(id => newSelected.includes(id))) {
+          setSelectAll(true);
+        }
+        
+        return newSelected;
+      }
+    });
   };
 
   // Open status edit dialog
@@ -164,14 +236,26 @@ export default function Posts() {
           <Typography variant="h4" component="h1">
             Posts
           </Typography>
-          <Button 
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleCreatePost}
-          >
-            Create New Post
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            {selectedPosts.length > 0 && (
+              <Button 
+                variant="contained"
+                color="error"
+                startIcon={<DeleteIcon />}
+                onClick={handleBulkDeletePrompt}
+              >
+                Delete Selected ({selectedPosts.length})
+              </Button>
+            )}
+            <Button 
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleCreatePost}
+            >
+              Create New Post
+            </Button>
+          </Box>
         </Box>
 
         {/* Show error if there's any */}
@@ -207,6 +291,13 @@ export default function Posts() {
               <Table stickyHeader aria-label="posts table">
                 <TableHead>
                   <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={selectedPosts.length > 0 && selectedPosts.length < Math.min(rowsPerPage, filteredPosts.length)}
+                        checked={selectAll}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
                     <TableCell>Title</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Tags</TableCell>
@@ -220,6 +311,12 @@ export default function Posts() {
                       .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                       .map((post) => (
                         <TableRow hover key={post.id}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedPosts.includes(post.id)}
+                              onChange={() => handleSelectPost(post.id)}
+                            />
+                          </TableCell>
                           <TableCell component="th" scope="row">
                             {post.title}
                           </TableCell>
@@ -282,7 +379,7 @@ export default function Posts() {
                       ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} align="center">
+                      <TableCell colSpan={6} align="center">
                         {searchTerm ? 'No results found' : 'No posts available'}
                       </TableCell>
                     </TableRow>
@@ -307,9 +404,19 @@ export default function Posts() {
           open={isDeleteDialogOpen}
           onClose={() => setIsDeleteDialogOpen(false)}
         >
-          <DialogTitle>Delete Post</DialogTitle>
+          <DialogTitle>
+            {isBulkDelete ? 'Delete Multiple Posts' : 'Delete Post'}
+          </DialogTitle>
           <DialogContent>
-            Are you sure you want to delete this post? This action cannot be undone.
+            {isBulkDelete ? (
+              <Typography>
+                Are you sure you want to delete {selectedPosts.length} {selectedPosts.length === 1 ? 'post' : 'posts'}? This action cannot be undone.
+              </Typography>
+            ) : (
+              <Typography>
+                Are you sure you want to delete this post? This action cannot be undone.
+              </Typography>
+            )}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>

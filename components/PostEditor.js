@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { 
   Box, 
   TextField, 
@@ -24,6 +24,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import CodeIcon from '@mui/icons-material/Code';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import dynamic from 'next/dynamic';
+import React from 'react';
+
 // Import TurnDown dynamically as it's client-side only
 const TurndownService = dynamic(() => import('turndown'), { 
   ssr: false
@@ -36,7 +38,7 @@ const ReactQuill = dynamic(() => import('react-quill'), {
 // Import ReactQuill styles
 import 'react-quill/dist/quill.snow.css';
 
-export default function PostEditor({ post, onSave, onCancel }) {
+const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const { uploadImage } = useBlogContext();
   const { darkMode } = useThemeContext();
   const [title, setTitle] = useState(post?.title || '');
@@ -52,6 +54,31 @@ export default function PostEditor({ post, onSave, onCancel }) {
   const [turndownInstance, setTurndownInstance] = useState(null);
   const [editorHeight, setEditorHeight] = useState(600);
   const quillRef = useRef(null);
+  
+  // Function to get the current post data
+  const getCurrentPostData = () => {
+    // Ensure we save the markdown version regardless of editor type
+    let finalContent = content;
+    if (editorType === 'richtext' && turndownInstance && htmlContent) {
+      finalContent = turndownInstance.turndown(htmlContent);
+    }
+    
+    return {
+      ...post,
+      title,
+      content: finalContent,
+      tags,
+      images
+    };
+  };
+  
+  // Expose methods to parent component through ref
+  useImperativeHandle(ref, () => ({
+    savePost: () => {
+      const updatedPost = getCurrentPostData();
+      onSave(updatedPost);
+    }
+  }));
   
   // Quill editor configuration
   const quillModules = {
@@ -147,20 +174,7 @@ export default function PostEditor({ post, onSave, onCancel }) {
   
   // Create savePost function with useCallback to prevent unnecessary recreations
   const savePost = useCallback(() => {
-    // If in rich text mode, ensure we have the latest markdown version
-    let finalContent = content;
-    if (editorType === 'richtext' && turndownInstance && htmlContent) {
-      finalContent = turndownInstance.turndown(htmlContent);
-    }
-    
-    const updatedPost = {
-      ...post,
-      title,
-      content: finalContent,
-      tags,
-      images
-    };
-    
+    const updatedPost = getCurrentPostData();
     onSave(updatedPost, true); // Pass true to indicate this is an auto-save
     setLastSaved(new Date());
   }, [post, title, content, editorType, htmlContent, turndownInstance, tags, images, onSave]);
@@ -234,21 +248,7 @@ export default function PostEditor({ post, onSave, onCancel }) {
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    // Ensure we save the markdown version regardless of editor type
-    let finalContent = content;
-    if (editorType === 'richtext' && turndownInstance && htmlContent) {
-      finalContent = turndownInstance.turndown(htmlContent);
-    }
-    
-    const updatedPost = {
-      ...post,
-      title,
-      content: finalContent,
-      tags,
-      images
-    };
-    
+    const updatedPost = getCurrentPostData();
     onSave(updatedPost);
   };
 
@@ -443,4 +443,10 @@ export default function PostEditor({ post, onSave, onCancel }) {
       </Box>
     </Box>
   );
-}
+});
+
+// Export as a named component with display name for better debugging
+const PostEditor = React.memo(PostEditorComponent);
+PostEditor.displayName = 'PostEditor';
+
+export default PostEditor;

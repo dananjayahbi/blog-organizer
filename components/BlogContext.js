@@ -131,6 +131,50 @@ export const BlogProvider = ({ children }) => {
     }
   };
 
+  // Delete multiple posts
+  const deleteMultiplePosts = async (ids) => {
+    try {
+      // Track success/failure for each post
+      const results = [];
+      
+      // Delete posts one by one
+      for (const id of ids) {
+        try {
+          if (window.electronAPI) {
+            const result = await window.electronAPI.deletePost(id);
+            if (!result.success) {
+              results.push({ id, success: false, error: result.error || 'Failed to delete post' });
+              continue;
+            }
+          }
+          results.push({ id, success: true });
+        } catch (err) {
+          results.push({ id, success: false, error: err.message });
+        }
+      }
+
+      // Update state by removing all posts that were successfully deleted
+      const successfullyDeletedIds = results
+        .filter(result => result.success)
+        .map(result => result.id);
+      
+      setPosts((prevPosts) => prevPosts.filter((post) => !successfullyDeletedIds.includes(post.id)));
+      
+      // Check if all deletions were successful
+      const allSuccess = results.every(result => result.success);
+      if (!allSuccess) {
+        const failedCount = results.filter(result => !result.success).length;
+        throw new Error(`Failed to delete ${failedCount} posts`);
+      }
+      
+      return { success: true, deletedCount: successfullyDeletedIds.length };
+    } catch (err) {
+      console.error('Error in bulk delete:', err);
+      setError('Some posts could not be deleted');
+      throw err;
+    }
+  };
+
   // Upload an image
   const uploadImage = async () => {
     try {
@@ -155,6 +199,7 @@ export const BlogProvider = ({ children }) => {
     addPost,
     updatePost,
     deletePost,
+    deleteMultiplePosts,
     uploadImage,
   };
 
