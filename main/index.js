@@ -10,9 +10,9 @@ const readdirAsync = promisify(fs.readdir);
 const statAsync = promisify(fs.stat);
 const unlinkAsync = promisify(fs.unlink);
 
-// Path to store blog post data
-const dataDir = path.join(app.getPath('userData'), 'posts');
-const imagesDir = path.join(app.getPath('userData'), 'images');
+// Path to store blog post data - using project directory instead of userData
+const dataDir = path.join(__dirname, '..', 'data', 'posts');
+const imagesDir = path.join(__dirname, '..', 'public', 'images');
 
 // Ensure data directories exist
 const ensureDirectoriesExist = async () => {
@@ -48,7 +48,8 @@ function createWindow() {
   } else {
     // In development, load from the dev server
     mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
+    // Remove automatic opening of dev tools
+    // mainWindow.webContents.openDevTools();
   }
 
   mainWindow.on('closed', () => {
@@ -137,7 +138,8 @@ ipcMain.handle('select-image', async () => {
     
     return { 
       fileName,
-      filePath: targetPath,
+      // Use web-friendly path format (relative to public)
+      filePath: `/images/${fileName}`,
       canceled: false 
     };
   } catch (error) {

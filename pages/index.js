@@ -1,129 +1,76 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  Container, 
   Box, 
   Typography, 
-  Button, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent,
-  DialogActions,
-  Fab,
-  CssBaseline,
-  ThemeProvider,
-  createTheme,
+  Grid, 
+  Paper, 
+  Container,
+  Card,
+  CardContent,
   CircularProgress,
-  Alert,
-  Snackbar
+  Alert
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import PostList from '../components/PostList';
-import PostEditor from '../components/PostEditor';
-import { BlogProvider, useBlogContext } from '../components/BlogContext';
+import { 
+  Description as PostsIcon,
+  Image as ImagesIcon,
+  Edit as DraftsIcon,
+  Publish as PublishedIcon
+} from '@mui/icons-material';
+import Layout from '../components/Layout';
+import { useBlogContext } from '../components/BlogContext';
 
-// Create a theme instance
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-});
+export default function Dashboard() {
+  const { posts, loading, error } = useBlogContext();
+  const [stats, setStats] = useState({
+    totalPosts: 0,
+    draftPosts: 0,
+    publishedPosts: 0,
+    totalImages: 0
+  });
 
-function MainContent() {
-  const { posts, loading, error, addPost, updatePost, deletePost } = useBlogContext();
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [currentPost, setCurrentPost] = useState(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [postToDelete, setPostToDelete] = useState(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-
-  // Open editor for creating a new post
-  const handleCreatePost = () => {
-    setCurrentPost(null);
-    setIsEditorOpen(true);
-  };
-
-  // Open editor for editing an existing post
-  const handleEditPost = (post) => {
-    setCurrentPost(post);
-    setIsEditorOpen(true);
-  };
-
-  // Open confirmation dialog for deleting a post
-  const handleDeletePrompt = (postId) => {
-    setPostToDelete(postId);
-    setIsDeleteDialogOpen(true);
-  };
-
-  // Handle post save action
-  const handleSavePost = async (postData) => {
-    try {
-      if (currentPost) {
-        // Updating an existing post
-        await updatePost(currentPost.id, postData);
-        setSnackbar({ 
-          open: true, 
-          message: 'Post updated successfully', 
-          severity: 'success' 
-        });
-      } else {
-        // Creating a new post
-        await addPost(postData);
-        setSnackbar({ 
-          open: true, 
-          message: 'New post created successfully', 
-          severity: 'success' 
-        });
-      }
-      setIsEditorOpen(false);
-    } catch (err) {
-      setSnackbar({ 
-        open: true, 
-        message: 'Error saving post: ' + err.message, 
-        severity: 'error' 
+  // Calculate statistics
+  useEffect(() => {
+    if (posts && posts.length > 0) {
+      const totalPosts = posts.length;
+      const draftPosts = posts.filter(post => post.status === 'draft').length;
+      const publishedPosts = posts.filter(post => post.status === 'published').length;
+      
+      // Count all images used across posts
+      const totalImages = posts.reduce((total, post) => {
+        return total + (post.images ? post.images.length : 0);
+      }, 0);
+      
+      setStats({
+        totalPosts,
+        draftPosts,
+        publishedPosts,
+        totalImages
       });
     }
-  };
+  }, [posts]);
 
-  // Handle post delete confirmation
-  const handleDeleteConfirm = async () => {
-    try {
-      await deletePost(postToDelete);
-      setIsDeleteDialogOpen(false);
-      setPostToDelete(null);
-      setSnackbar({ 
-        open: true, 
-        message: 'Post deleted successfully', 
-        severity: 'success' 
-      });
-    } catch (err) {
-      setSnackbar({ 
-        open: true, 
-        message: 'Error deleting post: ' + err.message, 
-        severity: 'error' 
-      });
-    }
-  };
+  // Stats cards data
+  const statsCards = [
+    { title: 'Total Posts', value: stats.totalPosts, icon: <PostsIcon sx={{ fontSize: 40 }} color="primary" /> },
+    { title: 'Draft Posts', value: stats.draftPosts, icon: <DraftsIcon sx={{ fontSize: 40 }} color="secondary" /> },
+    { title: 'Published Posts', value: stats.publishedPosts, icon: <PublishedIcon sx={{ fontSize: 40 }} color="success" /> },
+    { title: 'Total Images', value: stats.totalImages, icon: <ImagesIcon sx={{ fontSize: 40 }} color="info" /> },
+  ];
 
-  // Close snackbar
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
+  // Recent posts (show latest 5 posts)
+  const recentPosts = posts ? [...posts].sort((a, b) => 
+    new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5) : [];
 
   return (
-    <Container maxWidth="md">
-      <Box sx={{ my: 4 }}>
+    <Layout>
+      <Box sx={{ flexGrow: 1 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Blog Post Draft Manager
+          Dashboard
         </Typography>
-        
+
         {/* Show error if there's any */}
         {error && (
-          <Alert severity="error" sx={{ my: 2 }}>
+          <Alert severity="error" sx={{ mb: 4 }}>
             {error}
           </Alert>
         )}
@@ -135,92 +82,72 @@ function MainContent() {
           </Box>
         ) : (
           <>
-            {/* Display list of posts */}
-            <PostList
-              posts={posts}
-              onEdit={handleEditPost}
-              onDelete={handleDeletePrompt}
-            />
+            {/* Stats Cards */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              {statsCards.map((card) => (
+                <Grid item xs={12} sm={6} md={3} key={card.title}>
+                  <Paper
+                    sx={{
+                      p: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: 140,
+                      justifyContent: 'space-between',
+                    }}
+                    elevation={2}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Typography component="h2" variant="h6" color="text.secondary">
+                        {card.title}
+                      </Typography>
+                      {card.icon}
+                    </Box>
+                    <Typography component="p" variant="h3">
+                      {card.value}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
             
-            {/* Floating action button for creating new posts */}
-            <Fab
-              color="primary"
-              aria-label="add"
-              sx={{
-                position: 'fixed',
-                bottom: 16,
-                right: 16,
-              }}
-              onClick={handleCreatePost}
-            >
-              <AddIcon />
-            </Fab>
+            {/* Recent Posts Section */}
+            <Typography variant="h5" gutterBottom sx={{ mt: 4, mb: 2 }}>
+              Recent Posts
+            </Typography>
+            <Grid container spacing={2}>
+              {recentPosts.length > 0 ? (
+                recentPosts.map((post) => (
+                  <Grid item xs={12} key={post.id}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6">{post.title}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {post.content.substring(0, 120)}
+                          {post.content.length > 120 ? '...' : ''}
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Status: {post.status || 'draft'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Last updated: {new Date(post.updatedAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))
+              ) : (
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="body1">No posts yet. Create your first post!</Typography>
+                  </Paper>
+                </Grid>
+              )}
+            </Grid>
           </>
         )}
       </Box>
-      
-      {/* Post Editor Dialog */}
-      <Dialog
-        open={isEditorOpen}
-        onClose={() => setIsEditorOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          {currentPost ? 'Edit Post' : 'Create New Post'}
-        </DialogTitle>
-        <DialogContent>
-          <PostEditor
-            post={currentPost}
-            onSave={handleSavePost}
-            onCancel={() => setIsEditorOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-      
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-      >
-        <DialogTitle>Delete Post</DialogTitle>
-        <DialogContent>
-          Are you sure you want to delete this post? This action cannot be undone.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" autoFocus>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity} 
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Container>
-  );
-}
-
-// Main page component wrapped with providers
-export default function Home() {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BlogProvider>
-        <MainContent />
-      </BlogProvider>
-    </ThemeProvider>
+    </Layout>
   );
 }

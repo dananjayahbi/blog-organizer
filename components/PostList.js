@@ -12,16 +12,50 @@ import {
   TextField,
   InputAdornment,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Switch,
+  FormControlLabel,
+  FormGroup
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
+import PublishIcon from '@mui/icons-material/Publish';
 import { format } from 'date-fns';
 
-export default function PostList({ posts, onEdit, onDelete }) {
+export default function PostList({ posts, onEdit, onDelete, onUpdateStatus }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTag, setFilterTag] = useState('');
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [currentPost, setCurrentPost] = useState(null);
+  const [isPublished, setIsPublished] = useState(false);
   
+  // Open status edit dialog
+  const handleStatusEditClick = (post) => {
+    setCurrentPost(post);
+    setIsPublished(post.status === 'published');
+    setStatusDialogOpen(true);
+  };
+
+  // Close dialog
+  const handleCloseDialog = () => {
+    setStatusDialogOpen(false);
+    setCurrentPost(null);
+  };
+
+  // Update status
+  const handleStatusUpdate = () => {
+    if (currentPost) {
+      onUpdateStatus(currentPost.id, isPublished ? 'published' : 'draft');
+      setStatusDialogOpen(false);
+      setCurrentPost(null);
+    }
+  };
+
   // Filter posts based on search term and selected tag
   const filteredPosts = posts.filter(post => {
     const matchesSearch = searchTerm === '' || 
@@ -60,6 +94,20 @@ export default function PostList({ posts, onEdit, onDelete }) {
     if (!content) return '';
     if (content.length <= maxLength) return content;
     return content.substring(0, maxLength) + '...';
+  };
+
+  // Get status chip color
+  const getStatusChipColor = (status) => {
+    switch (status) {
+      case 'published':
+        return 'success';
+      case 'draft':
+        return 'default';
+      case 'archived':
+        return 'error';
+      default:
+        return 'default';
+    }
   };
 
   return (
@@ -120,9 +168,18 @@ export default function PostList({ posts, onEdit, onDelete }) {
                 <ListItem alignItems="flex-start">
                   <ListItemText
                     primary={
-                      <Typography variant="h6" component="div">
-                        {post.title}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography variant="h6" component="div" sx={{ mr: 1 }}>
+                          {post.title}
+                        </Typography>
+                        <Chip 
+                          size="small"
+                          label={post.status || 'draft'}
+                          color={getStatusChipColor(post.status)}
+                          onClick={() => handleStatusEditClick(post)}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      </Box>
                     }
                     secondary={
                       <>
@@ -155,6 +212,9 @@ export default function PostList({ posts, onEdit, onDelete }) {
                     }
                   />
                   <ListItemSecondaryAction>
+                    <IconButton edge="end" onClick={() => handleStatusEditClick(post)} title="Change Status">
+                      <PublishIcon fontSize="small" />
+                    </IconButton>
                     <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
                       <EditIcon />
                     </IconButton>
@@ -169,6 +229,35 @@ export default function PostList({ posts, onEdit, onDelete }) {
           </List>
         )}
       </Paper>
+
+      {/* Status Update Dialog */}
+      <Dialog open={statusDialogOpen} onClose={handleCloseDialog}>
+        <DialogTitle>Update Post Status</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <Typography variant="body1" gutterBottom>
+              {currentPost?.title}
+            </Typography>
+            <FormGroup>
+              <FormControlLabel 
+                control={
+                  <Switch 
+                    checked={isPublished}
+                    onChange={(e) => setIsPublished(e.target.checked)}
+                  />
+                } 
+                label={isPublished ? "Published" : "Draft"}
+              />
+            </FormGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleStatusUpdate} color="primary" variant="contained">
+            Update
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
