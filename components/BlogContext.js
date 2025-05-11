@@ -175,6 +175,70 @@ export const BlogProvider = ({ children }) => {
     }
   };
 
+  // Archive a post
+  const archivePost = async (id) => {
+    try {
+      const postIndex = posts.findIndex((post) => post.id === id);
+      if (postIndex === -1) {
+        throw new Error('Post not found');
+      }
+
+      const archivedPost = {
+        ...posts[postIndex],
+        status: 'archived',
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (window.electronAPI) {
+        const result = await window.electronAPI.savePost(archivedPost);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to archive post');
+        }
+      }
+
+      const updatedPosts = [...posts];
+      updatedPosts[postIndex] = archivedPost;
+      setPosts(updatedPosts);
+      return archivedPost;
+    } catch (err) {
+      console.error('Error archiving post:', err);
+      setError('Failed to archive blog post');
+      throw err;
+    }
+  };
+
+  // Unarchive a post (restore to draft)
+  const unarchivePost = async (id) => {
+    try {
+      const postIndex = posts.findIndex((post) => post.id === id);
+      if (postIndex === -1) {
+        throw new Error('Post not found');
+      }
+
+      const unarchivedPost = {
+        ...posts[postIndex],
+        status: 'draft',
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (window.electronAPI) {
+        const result = await window.electronAPI.savePost(unarchivedPost);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to unarchive post');
+        }
+      }
+
+      const updatedPosts = [...posts];
+      updatedPosts[postIndex] = unarchivedPost;
+      setPosts(updatedPosts);
+      return unarchivedPost;
+    } catch (err) {
+      console.error('Error unarchiving post:', err);
+      setError('Failed to unarchive blog post');
+      throw err;
+    }
+  };
+
   // Upload an image
   const uploadImage = async () => {
     try {
@@ -201,6 +265,8 @@ export const BlogProvider = ({ children }) => {
     deletePost,
     deleteMultiplePosts,
     uploadImage,
+    archivePost,
+    unarchivePost,
   };
 
   return <BlogContext.Provider value={value}>{children}</BlogContext.Provider>;

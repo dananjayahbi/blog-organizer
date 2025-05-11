@@ -2,28 +2,19 @@ import { useState } from 'react';
 import { 
   Box, 
   Typography, 
-  Button,
   Alert,
   Snackbar,
   CircularProgress
 } from '@mui/material';
-import { 
-  Add as AddIcon
-} from '@mui/icons-material';
 import Layout from '../../components/Layout';
 import PostList from '../../components/PostList';
 import { useBlogContext } from '../../components/BlogContext';
 import { useRouter } from 'next/router';
 
-export default function Posts() {
-  const { posts, loading, error, deletePost, updatePost, archivePost } = useBlogContext();
+export default function Archives() {
+  const { posts, loading, error, deletePost, updatePost, unarchivePost } = useBlogContext();
   const router = useRouter();
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-
-  // Handle create new post
-  const handleCreatePost = () => {
-    router.push('/posts/editor');
-  };
 
   // Handle edit post
   const handleEditPost = (post) => {
@@ -66,19 +57,19 @@ export default function Posts() {
     }
   };
 
-  // Handle archive post
-  const handleArchivePost = async (postId) => {
+  // Handle unarchive post
+  const handleUnarchivePost = async (postId) => {
     try {
-      await archivePost(postId);
+      await unarchivePost(postId);
       setSnackbar({
         open: true,
-        message: 'Post archived successfully',
+        message: 'Post restored to drafts successfully',
         severity: 'success'
       });
     } catch (err) {
       setSnackbar({
         open: true,
-        message: `Error archiving post: ${err.message}`,
+        message: `Error restoring post: ${err.message}`,
         severity: 'error'
       });
     }
@@ -94,16 +85,8 @@ export default function Posts() {
       <Box sx={{ flexGrow: 1 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" component="h1">
-            Posts
+            Archives
           </Typography>
-          <Button 
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleCreatePost}
-          >
-            Create New Post
-          </Button>
         </Box>
 
         {/* Show error if there's any */}
@@ -113,7 +96,7 @@ export default function Posts() {
           </Alert>
         )}
         
-        {/* Posts list with filters, sorting, and archive functionality */}
+        {/* Archived posts list */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
             <CircularProgress />
@@ -124,9 +107,8 @@ export default function Posts() {
             onEdit={handleEditPost} 
             onDelete={handleDeletePost}
             onUpdateStatus={handleUpdateStatus}
-            onArchive={handleArchivePost}
-            defaultStatusFilter="draft"
-            hideArchived={true}
+            onUnarchive={handleUnarchivePost}
+            archivesMode={true}
           />
         )}
         

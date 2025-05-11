@@ -20,7 +20,8 @@ import {
   ChevronLeft as ChevronLeftIcon,
   Dashboard as DashboardIcon,
   Description as DescriptionIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Archive as ArchiveIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 
@@ -41,6 +42,7 @@ export default function Layout({ children }) {
   const navItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Posts', icon: <DescriptionIcon />, path: '/posts' },
+    { text: 'Archives', icon: <ArchiveIcon />, path: '/archives' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
