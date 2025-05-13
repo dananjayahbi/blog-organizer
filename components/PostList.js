@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   List,
   ListItem,
@@ -24,7 +24,8 @@ import {
   Select,
   FormControl,
   InputLabel,
-  Grid
+  Grid,
+  CircularProgress
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -34,7 +35,11 @@ import ArchiveIcon from '@mui/icons-material/Archive';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import SortIcon from '@mui/icons-material/Sort';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { format } from 'date-fns';
+import { FixedSizeList } from 'react-window';
+import debounce from 'lodash/debounce';
+import { useRouter } from 'next/router';
 
 export default function PostList({ 
   posts, 
@@ -47,7 +52,9 @@ export default function PostList({
   hideArchived = false,
   archivesMode = false
 }) {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [statusFilter, setStatusFilter] = useState(defaultStatusFilter);
   const [sortOption, setSortOption] = useState('updatedAt-desc'); // default sort by last updated
@@ -56,11 +63,44 @@ export default function PostList({
   const [isPublished, setIsPublished] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [unarchiveDialogOpen, setUnarchiveDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [listHeight, setListHeight] = useState(500); // Default height
+  const listContainerRef = useRef(null);
   
   // Set the default filter when the component mounts or when defaultStatusFilter changes
   useEffect(() => {
     setStatusFilter(defaultStatusFilter);
   }, [defaultStatusFilter]);
+
+  // Measure container height for virtualized list
+  useEffect(() => {
+    if (listContainerRef.current) {
+      const resizeObserver = new ResizeObserver(entries => {
+        setListHeight(entries[0].contentRect.height);
+      });
+      
+      resizeObserver.observe(listContainerRef.current);
+      return () => resizeObserver.disconnect();
+    }
+  }, []);
+  
+  // Implement search debounce to prevent excessive re-renders on typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setIsLoading(false);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
+
+  // Handle search input change with loading indicator
+  const handleSearchChange = (e) => {
+    setIsLoading(true);
+    setSearchTerm(e.target.value);
+  };
   
   // Open status edit dialog
   const handleStatusEditClick = (post) => {
@@ -126,11 +166,16 @@ export default function PostList({
     }
   };
 
+  // Handle post view navigation
+  const handleViewPost = (postId) => {
+    router.push(`/posts/view/${postId}`);
+  };
+
   // Filter posts based on search term, selected tag, and status
   const filteredPosts = posts.filter(post => {
-    const matchesSearch = searchTerm === '' || 
-      post.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      post.content.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = debouncedSearchTerm === '' || 
+      post.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
+      post.content.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     
     const matchesTag = filterTag === '' || 
       (post.tags && post.tags.includes(filterTag));
@@ -217,6 +262,102 @@ export default function PostList({
     }
   };
 
+  // Render a single post item for virtualized list
+  const renderPost = useCallback(({ index, style }) => {
+    const post = sortedPosts[index];
+    
+    return (
+      <Box key={post.id} style={style}>
+        <ListItem alignItems="flex-start">
+          <ListItemText
+            primary={
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="h6" component="div" sx={{ mr: 1 }}>
+                  {post.title}
+                </Typography>
+                <Chip 
+                  size="small"
+                  label={post.status || 'draft'}
+                  color={getStatusChipColor(post.status)}
+                  onClick={() => handleStatusEditClick(post)}
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Box>
+            }
+            secondary={
+              <>
+                <Typography
+                  component="span"
+                  variant="body2"
+                  color="textPrimary"
+                  sx={{ display: 'block', mb: 1 }}
+                >
+                  {getExcerpt(post.content)}
+                </Typography>
+                
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                  {post.tags && post.tags.map(tag => (
+                    <Chip 
+                      key={tag} 
+                      label={tag} 
+                      size="small" 
+                      onClick={() => handleTagClick(tag)}
+                    />
+                  ))}
+                </Box>
+                
+                <Typography variant="caption" color="textSecondary">
+                  Created: {formatDate(post.createdAt)}
+                  {post.updatedAt !== post.createdAt && 
+                    ` • Updated: ${formatDate(post.updatedAt)}`}
+                </Typography>
+              </>
+            }
+          />
+          <ListItemSecondaryAction>
+            {!archivesMode ? (
+              // Regular posts page actions
+              <>
+                <IconButton edge="end" onClick={() => handleViewPost(post.id)} title="View Post">
+                  <VisibilityIcon fontSize="small" />
+                </IconButton>
+                <IconButton edge="end" onClick={() => handleStatusEditClick(post)} title="Change Status">
+                  <PublishIcon fontSize="small" />
+                </IconButton>
+                <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
+                  <EditIcon />
+                </IconButton>
+                <IconButton edge="end" onClick={() => handleArchiveClick(post)} title="Archive">
+                  <ArchiveIcon fontSize="small" />
+                </IconButton>
+                <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
+                  <DeleteIcon />
+                </IconButton>
+              </>
+            ) : (
+              // Archives page actions
+              <>
+                <IconButton edge="end" onClick={() => handleViewPost(post.id)} title="View Post">
+                  <VisibilityIcon fontSize="small" />
+                </IconButton>
+                <IconButton edge="end" onClick={() => handleUnarchiveClick(post)} title="Unarchive">
+                  <UnarchiveIcon fontSize="small" />
+                </IconButton>
+                <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
+                  <EditIcon />
+                </IconButton>
+                <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
+                  <DeleteIcon />
+                </IconButton>
+              </>
+            )}
+          </ListItemSecondaryAction>
+        </ListItem>
+        {index < sortedPosts.length - 1 && <Divider />}
+      </Box>
+    );
+  }, [sortedPosts, archivesMode, filterTag]);
+
   return (
     <Box>
       {/* Search and filters */}
@@ -227,11 +368,11 @@ export default function PostList({
             variant="outlined"
             placeholder="Search posts..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon />
+                  {isLoading ? <CircularProgress size={20} /> : <SearchIcon />}
                 </InputAdornment>
               ),
             }}
@@ -318,92 +459,17 @@ export default function PostList({
             </Typography>
           </Box>
         ) : (
-          <List>
-            {sortedPosts.map((post, index) => (
-              <Box key={post.id}>
-                <ListItem alignItems="flex-start">
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography variant="h6" component="div" sx={{ mr: 1 }}>
-                          {post.title}
-                        </Typography>
-                        <Chip 
-                          size="small"
-                          label={post.status || 'draft'}
-                          color={getStatusChipColor(post.status)}
-                          onClick={() => handleStatusEditClick(post)}
-                          sx={{ cursor: 'pointer' }}
-                        />
-                      </Box>
-                    }
-                    secondary={
-                      <>
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          color="textPrimary"
-                          sx={{ display: 'block', mb: 1 }}
-                        >
-                          {getExcerpt(post.content)}
-                        </Typography>
-                        
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                          {post.tags && post.tags.map(tag => (
-                            <Chip 
-                              key={tag} 
-                              label={tag} 
-                              size="small" 
-                              onClick={() => handleTagClick(tag)}
-                            />
-                          ))}
-                        </Box>
-                        
-                        <Typography variant="caption" color="textSecondary">
-                          Created: {formatDate(post.createdAt)}
-                          {post.updatedAt !== post.createdAt && 
-                            ` • Updated: ${formatDate(post.updatedAt)}`}
-                        </Typography>
-                      </>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    {!archivesMode ? (
-                      // Regular posts page actions
-                      <>
-                        <IconButton edge="end" onClick={() => handleStatusEditClick(post)} title="Change Status">
-                          <PublishIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => handleArchiveClick(post)} title="Archive">
-                          <ArchiveIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
-                          <DeleteIcon />
-                        </IconButton>
-                      </>
-                    ) : (
-                      // Archives page actions
-                      <>
-                        <IconButton edge="end" onClick={() => handleUnarchiveClick(post)} title="Unarchive">
-                          <UnarchiveIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
-                          <DeleteIcon />
-                        </IconButton>
-                      </>
-                    )}
-                  </ListItemSecondaryAction>
-                </ListItem>
-                {index < sortedPosts.length - 1 && <Divider />}
-              </Box>
-            ))}
-          </List>
+          <Box ref={listContainerRef} sx={{ height: 'calc(100vh - 250px)', minHeight: '400px' }}>
+            <FixedSizeList
+              height={listHeight}
+              width="100%"
+              itemSize={150} // Adjust based on your post item height
+              itemCount={sortedPosts.length}
+              overscanCount={5} // Number of extra items to render above/below visible area
+            >
+              {renderPost}
+            </FixedSizeList>
+          </Box>
         )}
       </Paper>
 

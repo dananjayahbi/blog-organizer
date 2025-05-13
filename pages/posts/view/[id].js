@@ -19,6 +19,7 @@ import { marked } from 'marked';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
 import { useBlogContext } from '../../../components/BlogContext';
+import PDFExport from '../../../components/PDFExport';
 
 export default function ViewPost() {
   const router = useRouter();
@@ -174,13 +175,16 @@ export default function ViewPost() {
                 </Box>
               )}
             </Box>
-            <Button 
-              variant="outlined" 
-              startIcon={<EditIcon />}
-              onClick={handleEditPost}
-            >
-              Edit Post
-            </Button>
+            <Stack direction="row" spacing={2}>
+              <PDFExport post={post} />
+              <Button 
+                variant="outlined" 
+                startIcon={<EditIcon />}
+                onClick={handleEditPost}
+              >
+                Edit Post
+              </Button>
+            </Stack>
           </Box>
           
           <Divider sx={{ my: 2 }} />
@@ -218,6 +222,7 @@ export default function ViewPost() {
             Back to Posts
           </Button>
           <Stack direction="row" spacing={2}>
+            <PDFExport post={post} />
             <Button 
               startIcon={<ArrowBackIcon />}
               disabled={!prevPostId}

@@ -11,7 +11,11 @@ import {
   IconButton,
   ToggleButtonGroup,
   ToggleButton,
-  Grid
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { marked } from 'marked';
 import { useBlogContext } from './BlogContext';
@@ -23,6 +27,8 @@ import PreviewIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import CodeIcon from '@mui/icons-material/Code';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import LinkIcon from '@mui/icons-material/Link';
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -53,7 +59,11 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const [htmlContent, setHtmlContent] = useState('');
   const [turndownInstance, setTurndownInstance] = useState(null);
   const [editorHeight, setEditorHeight] = useState(600);
+  const [imageUrlDialogOpen, setImageUrlDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageAlt, setImageAlt] = useState('');
   const quillRef = useRef(null);
+  const fileInputRef = useRef(null);
   
   // Function to get the current post data
   const getCurrentPostData = () => {
@@ -192,10 +202,15 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     return () => clearTimeout(timer);
   }, [title, content, htmlContent, autoSaveEnabled, savePost]);
   
-  // Parse markdown to HTML for preview
+  // Parse markdown to HTML for preview - FIXED FORMAT
   const renderMarkdown = (text) => {
-    if (!text) return '';
-    return { __html: marked.parse(text) };
+    if (!text) return { __html: '' };
+    try {
+      return { __html: marked.parse(text) };
+    } catch (error) {
+      console.error("Error parsing markdown:", error);
+      return { __html: '<p>Error rendering preview</p>' };
+    }
   };
 
   // Handle tag addition
@@ -224,25 +239,128 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     try {
       const imageResult = await uploadImage();
       if (imageResult && !imageResult.canceled) {
-        // Add image to the content based on editor type
-        const imagePath = imageResult.fileName;
+        // The image path is already correctly formatted from Electron as /images/filename
+        const imagePath = imageResult.filePath;
         setImages([...images, imagePath]);
         
         if (editorType === 'markdown') {
-          // Add markdown image tag to content
+          // Add markdown image tag to content with the cursor position in mind
           const imageMarkdown = `\n![Image](${imagePath})\n`;
           setContent(prevContent => prevContent + imageMarkdown);
+          
+          // Force update to ensure preview reflects the change
+          setTimeout(() => {
+            const previewElement = document.querySelector('.markdown-preview, .markdown-preview-dark');
+            if (previewElement) {
+              previewElement.innerHTML = marked.parse(content + imageMarkdown);
+            }
+          }, 100);
         } else {
           // Insert image in rich text editor
-          // This is handled by the Quill editor's own image insertion tool
-          // But we still track the image for storage purposes
-          const imageUrl = `${imagePath}`;
-          setHtmlContent(prevHtml => prevHtml + `<img src="${imageUrl}" alt="Image" />`);
+          const quill = quillRef.current?.getEditor();
+          if (quill) {
+            // Get the current selection range or use the end of the document
+            const range = quill.getSelection(true);
+            // Insert the image at the current cursor position
+            quill.insertEmbed(range.index, 'image', imagePath);
+            // Move cursor after the image
+            quill.setSelection(range.index + 1, 0);
+          } else {
+            // If the Quill editor isn't available, append to the HTML content
+            setHtmlContent(prevHtml => prevHtml + `<img src="${imagePath}" alt="Image" />`);
+          }
         }
       }
     } catch (error) {
       console.error("Error uploading image:", error);
     }
+  };
+
+  // Open dialog for adding image by URL
+  const handleAddImageByUrlClick = () => {
+    setImageUrl('');
+    setImageAlt('Image');
+    setImageUrlDialogOpen(true);
+  };
+
+  // Close image URL dialog
+  const handleCloseImageUrlDialog = () => {
+    setImageUrlDialogOpen(false);
+  };
+
+  // Insert image by URL
+  const handleInsertImageByUrl = () => {
+    if (!imageUrl.trim()) return;
+    
+    // Add the URL to the content
+    if (editorType === 'markdown') {
+      // Add markdown image tag to content
+      const imageMarkdown = `\n![${imageAlt || 'Image'}](${imageUrl})\n`;
+      setContent(prevContent => {
+        const newContent = prevContent + imageMarkdown;
+        
+        // Force update to ensure preview reflects the change
+        setTimeout(() => {
+          const previewElement = document.querySelector('.markdown-preview, .markdown-preview-dark');
+          if (previewElement) {
+            previewElement.innerHTML = marked.parse(newContent);
+          }
+        }, 100);
+        
+        return newContent;
+      });
+    } else {
+      // Insert image in rich text editor
+      const quill = quillRef.current?.getEditor();
+      if (quill) {
+        // Get the current selection range or use the end of the document
+        const range = quill.getSelection(true);
+        // Insert the image at the current cursor position
+        quill.insertEmbed(range.index, 'image', imageUrl);
+        // Move cursor after the image
+        quill.setSelection(range.index + 1, 0);
+      } else {
+        // If the Quill editor isn't available, append to the HTML content
+        setHtmlContent(prevHtml => prevHtml + `<img src="${imageUrl}" alt="${imageAlt || 'Image'}" />`);
+      }
+    }
+    
+    // Close the dialog
+    setImageUrlDialogOpen(false);
+  };
+  
+  // Handle markdown file upload
+  const handleMarkdownFileUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle file selection
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Check if file is a markdown file
+    if (file.name.endsWith('.md') || file.name.endsWith('.markdown')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const fileContent = e.target.result;
+        setContent(fileContent);
+        
+        // Set title from filename if title is empty
+        if (!title) {
+          const fileName = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+          setTitle(fileName);
+        }
+      };
+      reader.readAsText(file);
+    } else {
+      alert('Please select a markdown file (.md or .markdown)');
+    }
+    
+    // Reset input to allow selecting the same file again
+    event.target.value = '';
   };
 
   // Handle form submission
@@ -324,6 +442,15 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         </ToggleButtonGroup>
       </Box>
       
+      {/* Hidden file input for markdown files */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,.markdown"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+      
       {/* Content editor */}
       {editorType === 'markdown' ? (
         // Markdown editor with side-by-side preview
@@ -332,14 +459,34 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="subtitle1">Editor</Typography>
-              <Button 
-                startIcon={<ImageIcon />}
-                onClick={handleImageUpload}
-                size="small"
-                variant="outlined"
-              >
-                Add Image
-              </Button>
+              <Box>
+                <Button 
+                  startIcon={<FileUploadIcon />}
+                  onClick={handleMarkdownFileUpload}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                >
+                  Load Markdown
+                </Button>
+                <Button 
+                  startIcon={<LinkIcon />}
+                  onClick={handleAddImageByUrlClick}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                >
+                  Add Image by URL
+                </Button>
+                <Button 
+                  startIcon={<ImageIcon />}
+                  onClick={handleImageUpload}
+                  size="small"
+                  variant="outlined"
+                >
+                  Upload Image
+                </Button>
+              </Box>
             </Box>
             <TextField
               multiline
@@ -415,14 +562,54 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
             )}
           </Box>
           <Button 
+            startIcon={<LinkIcon />}
+            onClick={handleAddImageByUrlClick}
+            sx={{ mt: 1, mr: 1 }}
+          >
+            Add Image by URL
+          </Button>
+          <Button 
             startIcon={<ImageIcon />}
             onClick={handleImageUpload}
             sx={{ mt: 1 }}
           >
-            Add Image
+            Upload Image
           </Button>
         </Box>
       )}
+      
+      {/* Image URL Dialog */}
+      <Dialog open={imageUrlDialogOpen} onClose={handleCloseImageUrlDialog}>
+        <DialogTitle>Add Image by URL</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Image URL"
+            type="url"
+            fullWidth
+            variant="outlined"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Alt Text"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={imageAlt}
+            onChange={(e) => setImageAlt(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseImageUrlDialog}>Cancel</Button>
+          <Button onClick={handleInsertImageByUrl} variant="contained" color="primary">
+            Insert
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 2 }}>
         <Button 
