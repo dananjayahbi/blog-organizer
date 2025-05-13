@@ -147,3 +147,92 @@ ipcMain.handle('select-image', async () => {
     return { canceled: true, error: error.message };
   }
 });
+
+// Delete image
+ipcMain.handle('delete-image', async (event, filename) => {
+  try {
+    if (!filename) {
+      return { success: false, error: 'No filename provided' };
+    }
+
+    // Make sure the file exists in the images directory
+    const imagePath = path.join(imagesDir, filename);
+    
+    if (!fs.existsSync(imagePath)) {
+      console.warn(`Image not found: ${imagePath}`);
+      return { success: false, error: 'Image not found' };
+    }
+    
+    // Delete the file
+    fs.unlinkSync(imagePath);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Export to PDF
+ipcMain.handle('export-pdf', async (event, content) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export to PDF',
+      defaultPath: path.join(app.getPath('documents'), 'blog-post.pdf'),
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] }
+      ]
+    });
+    
+    if (result.canceled) {
+      return { canceled: true };
+    }
+    
+    // In a real app, you'd use something like Puppeteer or html-pdf to convert to PDF
+    // For now, we'll just save the content as text
+    fs.writeFileSync(result.filePath, content);
+    
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    console.error('Error exporting PDF:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Settings
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+
+// Get settings
+ipcMain.handle('get-settings', async () => {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const content = fs.readFileSync(settingsPath, 'utf8');
+      return JSON.parse(content);
+    } else {
+      const defaultSettings = {
+        darkMode: false,
+        fontSize: 16,
+        autosave: true
+      };
+      fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
+      return defaultSettings;
+    }
+  } catch (error) {
+    console.error('Error getting settings:', error);
+    return {
+      darkMode: false,
+      fontSize: 16,
+      autosave: true
+    };
+  }
+});
+
+// Save settings
+ipcMain.handle('save-settings', async (event, settings) => {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    return { success: false, error: error.message };
+  }
+});

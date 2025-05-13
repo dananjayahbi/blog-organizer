@@ -11,7 +11,13 @@ import {
   IconButton,
   ToggleButtonGroup,
   ToggleButton,
-  Grid
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { marked } from 'marked';
 import { useBlogContext } from './BlogContext';
@@ -23,6 +29,8 @@ import PreviewIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import CodeIcon from '@mui/icons-material/Code';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import LinkIcon from '@mui/icons-material/Link';
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -39,7 +47,7 @@ const ReactQuill = dynamic(() => import('react-quill'), {
 import 'react-quill/dist/quill.snow.css';
 
 const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
-  const { uploadImage } = useBlogContext();
+  const { uploadImage, deleteImage } = useBlogContext();
   const { darkMode } = useThemeContext();
   const [title, setTitle] = useState(post?.title || '');
   const [content, setContent] = useState(post?.content || '');
@@ -53,7 +61,16 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const [htmlContent, setHtmlContent] = useState('');
   const [turndownInstance, setTurndownInstance] = useState(null);
   const [editorHeight, setEditorHeight] = useState(600);
+  const [imageUrlDialogOpen, setImageUrlDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageAlt, setImageAlt] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [previousImages, setPreviousImages] = useState([]);
   const quillRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const textEditorRef = useRef(null);
+  const markdownEditorRef = useRef(null);
+  const richTextEditorRef = useRef(null);
   
   // Function to get the current post data
   const getCurrentPostData = () => {
@@ -71,6 +88,78 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
       images
     };
   };
+  
+  // Track current images in the content and detect deleted ones
+  useEffect(() => {
+    // Skip initial render
+    if (previousImages.length === 0 && images.length === 0) {
+      setPreviousImages(images);
+      return;
+    }
+
+    // Check if any images were removed
+    const extractImagesFromContent = (text) => {
+      const regex = /!\[.*?\]\((\/images\/[^)]+)\)/g;
+      const matches = [];
+      let match;
+      
+      while ((match = regex.exec(text)) !== null) {
+        matches.push(match[1]);
+      }
+      
+      return matches;
+    };
+
+    // Extract images from HTML content
+    const extractImagesFromHtml = (html) => {
+      const regex = /<img[^>]+src=["']?(\/images\/[^"']+)["']?[^>]*>/g;
+      const matches = [];
+      let match;
+      
+      while ((match = regex.exec(html)) !== null) {
+        matches.push(match[1]);
+      }
+      
+      return matches;
+    };
+    
+    // Get all images currently in the content
+    let currentImages = [];
+    if (editorType === 'markdown') {
+      currentImages = extractImagesFromContent(content);
+    } else {
+      currentImages = extractImagesFromHtml(htmlContent);
+    }
+    
+    // Find images that were in the previous state but are no longer in the content
+    const removedImages = previousImages.filter(img => {
+      // Only consider "/images/" paths (uploaded images, not external URLs)
+      if (!img.startsWith('/images/')) return false;
+      return !currentImages.includes(img);
+    });
+    
+    // Delete removed images
+    if (removedImages.length > 0) {
+      removedImages.forEach(async (imagePath) => {
+        try {
+          // Extract the filename from the path
+          const filename = imagePath.split('/').pop();
+          if (filename && window.electronAPI && window.electronAPI.deleteImage) {
+            await deleteImage(filename);
+            showNotification('Image deleted from storage', 'info');
+          }
+        } catch (error) {
+          console.error('Failed to delete image:', error);
+        }
+      });
+      
+      // Update images list
+      setImages(currentImages);
+    }
+    
+    // Update previous images for next comparison
+    setPreviousImages(currentImages);
+  }, [content, htmlContent, editorType]);
   
   // Expose methods to parent component through ref
   useImperativeHandle(ref, () => ({
@@ -194,8 +283,58 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   
   // Parse markdown to HTML for preview
   const renderMarkdown = (text) => {
-    if (!text) return '';
-    return { __html: marked.parse(text) };
+    if (!text) return { __html: '' };
+    try {
+      return { __html: marked.parse(text) };
+    } catch (error) {
+      console.error("Error parsing markdown:", error);
+      return { __html: '<p>Error rendering preview</p>' };
+    }
+  };
+
+  // Insert text at cursor position in the markdown editor without changing scroll position
+  const insertAtCursor = (text) => {
+    const textEditor = textEditorRef.current;
+    if (!textEditor) return false;
+    
+    // Save current scroll position
+    const scrollTop = textEditor.scrollTop;
+    
+    const startPos = textEditor.selectionStart;
+    const endPos = textEditor.selectionEnd;
+    const textBeforeCursor = content.substring(0, startPos);
+    const textAfterCursor = content.substring(endPos);
+    
+    const newContent = textBeforeCursor + text + textAfterCursor;
+    setContent(newContent);
+    
+    // Force focus and set cursor position after inserted text, maintain scroll
+    setTimeout(() => {
+      textEditor.focus();
+      
+      // Set cursor position after inserted text
+      const newCursorPos = startPos + text.length;
+      textEditor.setSelectionRange(newCursorPos, newCursorPos);
+      
+      // Restore scroll position
+      textEditor.scrollTop = scrollTop;
+    }, 10);
+    
+    return true;
+  };
+
+  // Show notification
+  const showNotification = (message, severity = 'info') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  // Close notification
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   // Handle tag addition
@@ -219,30 +358,193 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     }
   };
 
-  // Handle image upload
+  // Handle image upload with scroll position preservation
   const handleImageUpload = async () => {
+    // Save scroll position before upload starts
+    const currentScrollTop = editorType === 'markdown' 
+      ? textEditorRef.current?.scrollTop 
+      : document.querySelector('.ql-editor')?.scrollTop;
+    
     try {
       const imageResult = await uploadImage();
       if (imageResult && !imageResult.canceled) {
-        // Add image to the content based on editor type
-        const imagePath = imageResult.fileName;
-        setImages([...images, imagePath]);
+        // The image path will be in the format that Electron returns
+        const imagePath = imageResult.filePath; // Should be like /images/filename.jpg
+        
+        // Keep track of the image for storage
+        if (!images.includes(imagePath)) {
+          setImages(prev => [...prev, imagePath]);
+        }
         
         if (editorType === 'markdown') {
-          // Add markdown image tag to content
-          const imageMarkdown = `\n![Image](${imagePath})\n`;
-          setContent(prevContent => prevContent + imageMarkdown);
+          // Insert markdown image tag at cursor position
+          const imageMarkdown = `![Image](${imagePath})`;
+          const inserted = insertAtCursor(imageMarkdown);
+          
+          if (!inserted) {
+            // Fallback: append to the end
+            setContent(prev => `${prev}\n\n${imageMarkdown}`);
+          }
+          
+          // Restore scroll position
+          setTimeout(() => {
+            if (textEditorRef.current && typeof currentScrollTop === 'number') {
+              textEditorRef.current.scrollTop = currentScrollTop;
+            }
+          }, 50);
+          
+          showNotification('Image inserted successfully!', 'success');
         } else {
           // Insert image in rich text editor
-          // This is handled by the Quill editor's own image insertion tool
-          // But we still track the image for storage purposes
-          const imageUrl = `${imagePath}`;
-          setHtmlContent(prevHtml => prevHtml + `<img src="${imageUrl}" alt="Image" />`);
+          const quill = quillRef.current?.getEditor();
+          if (quill) {
+            // Save scroll position before insertion
+            const editorElement = document.querySelector('.ql-editor');
+            const scrollTop = editorElement?.scrollTop || 0;
+            
+            // Get the current selection range or use the end of the document
+            const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
+            
+            // Insert the image at the current cursor position
+            quill.insertEmbed(range.index, 'image', imagePath);
+            
+            // Move cursor after the image
+            quill.setSelection(range.index + 1, 0);
+            
+            // Restore scroll position
+            setTimeout(() => {
+              if (editorElement) {
+                editorElement.scrollTop = scrollTop;
+              }
+            }, 50);
+            
+            showNotification('Image inserted successfully!', 'success');
+          } else {
+            // Fallback: append to the HTML content
+            setHtmlContent(prev => `${prev}<p><img src="${imagePath}" alt="Image" /></p>`);
+            showNotification('Image added at the end of the document', 'info');
+          }
         }
       }
     } catch (error) {
       console.error("Error uploading image:", error);
+      showNotification('Failed to upload image: ' + error.message, 'error');
     }
+  };
+
+  // Open dialog for adding image by URL
+  const handleAddImageByUrlClick = () => {
+    setImageUrl('');
+    setImageAlt('Image');
+    setImageUrlDialogOpen(true);
+  };
+
+  // Close image URL dialog
+  const handleCloseImageUrlDialog = () => {
+    setImageUrlDialogOpen(false);
+  };
+
+  // Insert image by URL with scroll position preservation
+  const handleInsertImageByUrl = () => {
+    if (!imageUrl.trim()) {
+      showNotification('Please enter a valid image URL', 'warning');
+      return;
+    }
+    
+    // Save scroll position before insertion
+    const currentScrollTop = editorType === 'markdown' 
+      ? textEditorRef.current?.scrollTop 
+      : document.querySelector('.ql-editor')?.scrollTop;
+    
+    // Add the URL to the content
+    if (editorType === 'markdown') {
+      // Insert markdown image tag at cursor position
+      const imageMarkdown = `![${imageAlt || 'Image'}](${imageUrl})`;
+      const inserted = insertAtCursor(imageMarkdown);
+      
+      if (!inserted) {
+        // Fallback: append to the end
+        setContent(prev => `${prev}\n\n${imageMarkdown}`);
+      }
+      
+      // Restore scroll position
+      setTimeout(() => {
+        if (textEditorRef.current && typeof currentScrollTop === 'number') {
+          textEditorRef.current.scrollTop = currentScrollTop;
+        }
+      }, 50);
+      
+      showNotification('Image inserted successfully!', 'success');
+    } else {
+      // Insert image in rich text editor
+      const quill = quillRef.current?.getEditor();
+      if (quill) {
+        // Save scroll position before insertion
+        const editorElement = document.querySelector('.ql-editor');
+        const scrollTop = editorElement?.scrollTop || 0;
+        
+        // Get the current selection range or use the end of the document
+        const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
+        
+        // Insert the image at the current cursor position
+        quill.insertEmbed(range.index, 'image', imageUrl);
+        
+        // Move cursor after the image
+        quill.setSelection(range.index + 1, 0);
+        
+        // Restore scroll position
+        setTimeout(() => {
+          if (editorElement) {
+            editorElement.scrollTop = scrollTop;
+          }
+        }, 50);
+        
+        showNotification('Image inserted successfully!', 'success');
+      } else {
+        // Fallback: append to the HTML content
+        setHtmlContent(prev => `${prev}<p><img src="${imageUrl}" alt="${imageAlt || 'Image'}" /></p>`);
+        showNotification('Image added at the end of the document', 'info');
+      }
+    }
+    
+    // Close the dialog
+    setImageUrlDialogOpen(false);
+  };
+  
+  // Handle markdown file upload
+  const handleMarkdownFileUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle file selection
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Check if file is a markdown file
+    if (file.name.endsWith('.md') || file.name.endsWith('.markdown')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const fileContent = e.target.result;
+        setContent(fileContent);
+        
+        // Set title from filename if title is empty
+        if (!title) {
+          const fileName = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+          setTitle(fileName);
+        }
+        
+        showNotification('Markdown file loaded successfully!', 'success');
+      };
+      reader.readAsText(file);
+    } else {
+      showNotification('Please select a markdown file (.md or .markdown)', 'warning');
+    }
+    
+    // Reset input to allow selecting the same file again
+    event.target.value = '';
   };
 
   // Handle form submission
@@ -324,6 +626,15 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         </ToggleButtonGroup>
       </Box>
       
+      {/* Hidden file input for markdown files */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,.markdown"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+      
       {/* Content editor */}
       {editorType === 'markdown' ? (
         // Markdown editor with side-by-side preview
@@ -332,16 +643,37 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="subtitle1">Editor</Typography>
-              <Button 
-                startIcon={<ImageIcon />}
-                onClick={handleImageUpload}
-                size="small"
-                variant="outlined"
-              >
-                Add Image
-              </Button>
+              <Box>
+                <Button 
+                  startIcon={<FileUploadIcon />}
+                  onClick={handleMarkdownFileUpload}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                >
+                  Load Markdown
+                </Button>
+                <Button 
+                  startIcon={<LinkIcon />}
+                  onClick={handleAddImageByUrlClick}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                >
+                  Add Image by URL
+                </Button>
+                <Button 
+                  startIcon={<ImageIcon />}
+                  onClick={handleImageUpload}
+                  size="small"
+                  variant="outlined"
+                >
+                  Upload Image
+                </Button>
+              </Box>
             </Box>
             <TextField
+              inputRef={textEditorRef}
               multiline
               fullWidth
               variant="outlined"
@@ -399,6 +731,13 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               '.ql-toolbar': {
                 borderTopLeftRadius: '4px',
                 borderTopRightRadius: '4px',
+              },
+              // Ensure images display properly in the editor
+              '.ql-editor img': {
+                maxWidth: '100%',
+                height: 'auto',
+                display: 'block',
+                margin: '1em 0'
               }
             }}
           >
@@ -415,14 +754,66 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
             )}
           </Box>
           <Button 
+            startIcon={<LinkIcon />}
+            onClick={handleAddImageByUrlClick}
+            sx={{ mt: 1, mr: 1 }}
+          >
+            Add Image by URL
+          </Button>
+          <Button 
             startIcon={<ImageIcon />}
             onClick={handleImageUpload}
             sx={{ mt: 1 }}
           >
-            Add Image
+            Upload Image
           </Button>
         </Box>
       )}
+      
+      {/* Image URL Dialog */}
+      <Dialog open={imageUrlDialogOpen} onClose={handleCloseImageUrlDialog}>
+        <DialogTitle>Add Image by URL</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Image URL"
+            type="url"
+            fullWidth
+            variant="outlined"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Alt Text"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={imageAlt}
+            onChange={(e) => setImageAlt(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseImageUrlDialog}>Cancel</Button>
+          <Button onClick={handleInsertImageByUrl} variant="contained" color="primary">
+            Insert
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
       
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 2 }}>
         <Button 

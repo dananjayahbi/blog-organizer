@@ -23,16 +23,14 @@ export const BlogProvider = ({ children }) => {
           const fetchedPosts = await window.electronAPI.getPosts();
           setPosts(fetchedPosts);
         } else {
-          // Fallback for development in browser without Electron
-          const storedPosts = localStorage.getItem('blog-posts');
-          if (storedPosts) {
-            setPosts(JSON.parse(storedPosts));
-          }
+          // Fallback for development in browser
+          const storedPosts = JSON.parse(localStorage.getItem('posts') || '[]');
+          setPosts(storedPosts);
         }
+        setLoading(false);
       } catch (err) {
         console.error('Error fetching posts:', err);
-        setError('Failed to load blog posts');
-      } finally {
+        setError('Failed to load posts');
         setLoading(false);
       }
     };
@@ -40,137 +38,72 @@ export const BlogProvider = ({ children }) => {
     fetchPosts();
   }, []);
 
-  // Save posts to storage when they change
-  useEffect(() => {
-    if (!loading && posts.length > 0) {
-      // Fallback for browser development
-      if (!window.electronAPI) {
-        localStorage.setItem('blog-posts', JSON.stringify(posts));
-      }
-    }
-  }, [posts, loading]);
-
-  // Add a new post
-  const addPost = async (postData) => {
-    const newPost = {
-      id: uuidv4(),
-      title: postData.title,
-      content: postData.content,
-      images: postData.images || [],
-      tags: postData.tags || [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: 'draft', // draft, published, archived
-    };
-
+  // Save a post (create or update)
+  const savePost = async (post) => {
     try {
+      // If post doesn't have an id, assign one
+      if (!post.id) {
+        post.id = uuidv4();
+        post.created = new Date().toISOString();
+      }
+
+      // Update the modified date
+      post.modified = new Date().toISOString();
+
+      // Save using Electron or localStorage
       if (window.electronAPI) {
-        const result = await window.electronAPI.savePost(newPost);
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to save post');
+        await window.electronAPI.savePost(post);
+      } else {
+        // Fallback for development in browser
+        const storedPosts = JSON.parse(localStorage.getItem('posts') || '[]');
+        const existingPostIndex = storedPosts.findIndex(p => p.id === post.id);
+        
+        if (existingPostIndex >= 0) {
+          storedPosts[existingPostIndex] = post;
+        } else {
+          storedPosts.push(post);
         }
-      }
-      
-      setPosts((prevPosts) => [...prevPosts, newPost]);
-      return newPost;
-    } catch (err) {
-      console.error('Error adding post:', err);
-      setError('Failed to add blog post');
-      throw err;
-    }
-  };
-
-  // Update an existing post
-  const updatePost = async (id, postData) => {
-    try {
-      const postIndex = posts.findIndex((post) => post.id === id);
-      if (postIndex === -1) {
-        throw new Error('Post not found');
+        
+        localStorage.setItem('posts', JSON.stringify(storedPosts));
       }
 
-      const updatedPost = {
-        ...posts[postIndex],
-        ...postData,
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (window.electronAPI) {
-        const result = await window.electronAPI.savePost(updatedPost);
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to update post');
+      // Update state
+      setPosts(currentPosts => {
+        const existingPostIndex = currentPosts.findIndex(p => p.id === post.id);
+        
+        if (existingPostIndex >= 0) {
+          const updatedPosts = [...currentPosts];
+          updatedPosts[existingPostIndex] = post;
+          return updatedPosts;
+        } else {
+          return [...currentPosts, post];
         }
-      }
+      });
 
-      const updatedPosts = [...posts];
-      updatedPosts[postIndex] = updatedPost;
-      setPosts(updatedPosts);
-      return updatedPost;
+      return post;
     } catch (err) {
-      console.error('Error updating post:', err);
-      setError('Failed to update blog post');
+      console.error('Error saving post:', err);
       throw err;
     }
   };
 
   // Delete a post
-  const deletePost = async (id) => {
+  const deletePost = async (postId) => {
     try {
+      // Delete using Electron or localStorage
       if (window.electronAPI) {
-        const result = await window.electronAPI.deletePost(id);
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to delete post');
-        }
+        await window.electronAPI.deletePost(postId);
+      } else {
+        // Fallback for development in browser
+        const storedPosts = JSON.parse(localStorage.getItem('posts') || '[]');
+        const updatedPosts = storedPosts.filter(p => p.id !== postId);
+        localStorage.setItem('posts', JSON.stringify(updatedPosts));
       }
 
-      setPosts((prevPosts) => prevPosts.filter((post) => post.id !== id));
-      return true;
+      // Update state
+      setPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
     } catch (err) {
       console.error('Error deleting post:', err);
-      setError('Failed to delete blog post');
-      throw err;
-    }
-  };
-
-  // Delete multiple posts
-  const deleteMultiplePosts = async (ids) => {
-    try {
-      // Track success/failure for each post
-      const results = [];
-      
-      // Delete posts one by one
-      for (const id of ids) {
-        try {
-          if (window.electronAPI) {
-            const result = await window.electronAPI.deletePost(id);
-            if (!result.success) {
-              results.push({ id, success: false, error: result.error || 'Failed to delete post' });
-              continue;
-            }
-          }
-          results.push({ id, success: true });
-        } catch (err) {
-          results.push({ id, success: false, error: err.message });
-        }
-      }
-
-      // Update state by removing all posts that were successfully deleted
-      const successfullyDeletedIds = results
-        .filter(result => result.success)
-        .map(result => result.id);
-      
-      setPosts((prevPosts) => prevPosts.filter((post) => !successfullyDeletedIds.includes(post.id)));
-      
-      // Check if all deletions were successful
-      const allSuccess = results.every(result => result.success);
-      if (!allSuccess) {
-        const failedCount = results.filter(result => !result.success).length;
-        throw new Error(`Failed to delete ${failedCount} posts`);
-      }
-      
-      return { success: true, deletedCount: successfullyDeletedIds.length };
-    } catch (err) {
-      console.error('Error in bulk delete:', err);
-      setError('Some posts could not be deleted');
       throw err;
     }
   };
@@ -179,31 +112,49 @@ export const BlogProvider = ({ children }) => {
   const uploadImage = async () => {
     try {
       if (window.electronAPI) {
-        // Return the complete result including filePath and fileName
         const result = await window.electronAPI.selectImage();
         return result;
+      } else {
+        console.warn('Image upload is not available in browser mode');
+        return null;
       }
-      return null;
     } catch (err) {
       console.error('Error uploading image:', err);
-      setError('Failed to upload image');
+      throw err;
+    }
+  };
+  
+  // Delete an image
+  const deleteImage = async (filename) => {
+    try {
+      if (window.electronAPI && window.electronAPI.deleteImage) {
+        const result = await window.electronAPI.deleteImage(filename);
+        return result;
+      } else {
+        console.warn('Image deletion is not available in browser mode');
+        return { success: false, error: 'Not available in browser mode' };
+      }
+    } catch (err) {
+      console.error('Error deleting image:', err);
       throw err;
     }
   };
 
-  // Value to be provided to consumers of this context
-  const value = {
-    posts,
-    loading,
-    error,
-    addPost,
-    updatePost,
-    deletePost,
-    deleteMultiplePosts,
-    uploadImage,
-  };
-
-  return <BlogContext.Provider value={value}>{children}</BlogContext.Provider>;
+  return (
+    <BlogContext.Provider 
+      value={{
+        posts,
+        loading,
+        error,
+        savePost,
+        deletePost,
+        uploadImage,
+        deleteImage
+      }}
+    >
+      {children}
+    </BlogContext.Provider>
+  );
 };
 
 export default BlogContext;
