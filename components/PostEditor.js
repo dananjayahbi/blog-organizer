@@ -17,7 +17,11 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
-  Alert
+  Alert,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import { marked } from 'marked';
 import { useBlogContext } from './BlogContext';
@@ -31,6 +35,12 @@ import CodeIcon from '@mui/icons-material/Code';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import LinkIcon from '@mui/icons-material/Link';
+import BuildIcon from '@mui/icons-material/Build';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import CodeOffIcon from '@mui/icons-material/CodeOff';
+import TextFormatIcon from '@mui/icons-material/TextFormat';
+import NoteIcon from '@mui/icons-material/Note';
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -66,6 +76,10 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const [imageAlt, setImageAlt] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [previousImages, setPreviousImages] = useState([]);
+  
+  // HTML snippets menu state
+  const [snippetsMenuAnchor, setSnippetsMenuAnchor] = useState(null);
+  const isSnippetsMenuOpen = Boolean(snippetsMenuAnchor);
   
   // Add refs for tracking cursor position and scroll position
   const lastCursorPos = useRef(null);
@@ -692,6 +706,16 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               <Typography variant="subtitle1">Editor</Typography>
               <Box>
                 <Button 
+                  startIcon={<BuildIcon />}
+                  onClick={(e) => setSnippetsMenuAnchor(e.currentTarget)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                  color="primary"
+                >
+                  HTML Tools
+                </Button>
+                <Button 
                   startIcon={<FileUploadIcon />}
                   onClick={handleMarkdownFileUpload}
                   size="small"
@@ -875,6 +899,116 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* HTML Snippets Menu */}
+      <Menu
+        anchorEl={snippetsMenuAnchor}
+        open={isSnippetsMenuOpen}
+        onClose={() => setSnippetsMenuAnchor(null)}
+      >
+        <MenuItem onClick={() => {
+          insertAtCursor(`<p align="center">
+  <img src="IMAGE_URL_HERE" alt="Centered Image" width="150">
+</p>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Centered image snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <CenterFocusStrongIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Centered Image</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<div style="text-align: center;">
+  Centered text content here
+</div>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Centered text snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <TextFormatIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Centered Text</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<table>
+  <thead>
+    <tr>
+      <th>Header 1</th>
+      <th>Header 2</th>
+      <th>Header 3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Row 1, Cell 1</td>
+      <td>Row 1, Cell 2</td>
+      <td>Row 1, Cell 3</td>
+    </tr>
+    <tr>
+      <td>Row 2, Cell 1</td>
+      <td>Row 2, Cell 2</td>
+      <td>Row 2, Cell 3</td>
+    </tr>
+  </tbody>
+</table>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Table snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <TableChartIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>HTML Table</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<div style="border-left: 4px solid #ccc; padding-left: 16px; font-style: italic; margin: 20px 0;">
+  Blockquote content here - this is styled with HTML instead of Markdown
+</div>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Styled blockquote snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <FormatBoldIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Styled Blockquote</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<pre style="background-color: #f5f5f5; padding: 16px; border-radius: 4px; overflow: auto;">
+<code>
+// Your code here
+function example() {
+  console.log("This is a code block with styling");
+}
+</code>
+</pre>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Code block snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <CodeOffIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Styled Code Block</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<details>
+  <summary>Click to expand</summary>
+  
+  Hidden content goes here. This is useful for FAQs or other expandable sections.
+</details>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Collapsible section inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <NoteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Collapsible Section</ListItemText>
+        </MenuItem>
+      </Menu>
       
       {/* Notifications */}
       <Snackbar 
