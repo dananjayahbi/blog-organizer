@@ -24,6 +24,7 @@ import {
   Archive as ArchiveIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
+import MarkdownHelpButton from './MarkdownHelpButton';
 
 // Drawer width
 const drawerWidth = 240;
@@ -160,6 +161,7 @@ export default function Layout({ children }) {
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
         <Toolbar /> {/* Add spacing equal to the AppBar height */}
         {children}
+        <MarkdownHelpButton />
       </Box>
     </Box>
   );

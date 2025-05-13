@@ -30,6 +30,7 @@ const ensureDirectoriesExist = async () => {
 
 // Create the browser window
 let mainWindow;
+let markdownCheatSheetWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -54,6 +55,40 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+}
+
+// Function to create a Markdown cheat sheet window
+function createMarkdownCheatSheetWindow() {
+  // If window already exists, focus it instead of creating a new one
+  if (markdownCheatSheetWindow) {
+    markdownCheatSheetWindow.focus();
+    return;
+  }
+
+  markdownCheatSheetWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    title: 'Markdown Cheat Sheet',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  // Load the markdown cheat sheet page
+  if (app.isPackaged) {
+    markdownCheatSheetWindow.loadFile(
+      path.join(__dirname, '../renderer/out/markdown-cheatsheet.html')
+    );
+  } else {
+    markdownCheatSheetWindow.loadURL('http://localhost:3000/markdown-cheatsheet');
+  }
+
+  // Clean up when window is closed
+  markdownCheatSheetWindow.on('closed', () => {
+    markdownCheatSheetWindow = null;
   });
 }
 
@@ -252,4 +287,10 @@ ipcMain.handle('save-settings', async (event, settings) => {
     console.error('Error saving settings:', error);
     return { success: false, error: error.message };
   }
+});
+
+// IPC handler for opening Markdown cheat sheet window
+ipcMain.handle('open-markdown-cheatsheet', () => {
+  createMarkdownCheatSheetWindow();
+  return { success: true };
 });

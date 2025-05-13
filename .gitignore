@@ -7,3 +7,4 @@ public/images
 .next/static
 .next/trace
 data
+out
