@@ -2,6 +2,12 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
+const serveStatic = require('electron-serve');
+
+// Set up static file serving for production builds
+const loadURL = serveStatic({
+  directory: path.join(app.getAppPath(), app.isPackaged ? 'out' : 'renderer/out')
+});
 
 const readFileAsync = promisify(fs.readFile);
 const writeFileAsync = promisify(fs.writeFile);
@@ -10,22 +16,38 @@ const readdirAsync = promisify(fs.readdir);
 const statAsync = promisify(fs.stat);
 const unlinkAsync = promisify(fs.unlink);
 
-// Path to store blog post data - using project directory instead of userData
-const dataDir = path.join(__dirname, '..', 'data', 'posts');
-const imagesDir = path.join(__dirname, '..', 'public', 'images');
-const snippetsDir = path.join(__dirname, '..', 'data', 'snippets');
+// Use different paths for development and production
+// In production, store data in the user's app data directory (outside the ASAR archive)
+// In development, use local project directories
+
+// Base directories for data storage
+const baseDir = app.isPackaged 
+  ? path.join(app.getPath('userData'), 'data') 
+  : path.join(__dirname, '..');
+
+// Path to store blog post data
+const dataDir = path.join(baseDir, 'data', 'posts');
+const snippetsDir = path.join(baseDir, 'data', 'snippets');
+
+// Images directory - keep in public for dev, but in userData for production
+const imagesDir = app.isPackaged
+  ? path.join(app.getPath('userData'), 'images')
+  : path.join(__dirname, '..', 'public', 'images');
 
 // Ensure data directories exist
 const ensureDirectoriesExist = async () => {
   try {
     if (!fs.existsSync(dataDir)) {
       await mkdirAsync(dataDir, { recursive: true });
+      console.log(`Created data directory at: ${dataDir}`);
     }
     if (!fs.existsSync(imagesDir)) {
       await mkdirAsync(imagesDir, { recursive: true });
+      console.log(`Created images directory at: ${imagesDir}`);
     }
     if (!fs.existsSync(snippetsDir)) {
       await mkdirAsync(snippetsDir, { recursive: true });
+      console.log(`Created snippets directory at: ${snippetsDir}`);
     }
   } catch (error) {
     console.error('Error creating directories:', error);
@@ -47,13 +69,12 @@ function createWindow() {
     },
   });
 
-  // In production, load the bundled app
+  // In production, load the bundled app using electron-serve
   if (app.isPackaged) {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/out/index.html'));
+    loadURL(mainWindow);
   } else {
     // In development, load from the dev server
     mainWindow.loadURL('http://localhost:3000');
-    // Remove automatic opening of dev tools
     // mainWindow.webContents.openDevTools();
   }
 
@@ -83,9 +104,8 @@ function createMarkdownCheatSheetWindow() {
 
   // Load the markdown cheat sheet page
   if (app.isPackaged) {
-    markdownCheatSheetWindow.loadFile(
-      path.join(__dirname, '../renderer/out/markdown-cheatsheet.html')
-    );
+    // Use electron-serve to load the markdown cheatsheet
+    loadURL(markdownCheatSheetWindow, '/markdown-cheatsheet');
   } else {
     markdownCheatSheetWindow.loadURL('http://localhost:3000/markdown-cheatsheet');
   }
@@ -99,6 +119,18 @@ function createMarkdownCheatSheetWindow() {
 // App lifecycle events
 app.whenReady().then(async () => {
   await ensureDirectoriesExist();
+  
+  // Register a custom protocol to serve images from userData directory in production
+  if (app.isPackaged) {
+    // Register 'images' protocol to serve images from the userData directory
+    protocol = require('electron').protocol;
+    protocol.registerFileProtocol('images', (request, callback) => {
+      const url = request.url.substring(9); // remove 'images://' 
+      const imagePath = path.join(imagesDir, url);
+      callback({ path: imagePath });
+    });
+  }
+  
   createWindow();
 
   app.on('activate', () => {
@@ -192,10 +224,14 @@ ipcMain.handle('select-image', async () => {
     // Copy the file to our app's image directory
     await fs.promises.copyFile(originalPath, targetPath);
     
+    // For production builds, use our custom protocol to serve images from userData
+    const filePath = app.isPackaged 
+      ? `images://${fileName}`
+      : `/images/${fileName}`;
+    
     return { 
       fileName,
-      // Use web-friendly path format (relative to public)
-      filePath: `/images/${fileName}`,
+      filePath,
       canceled: false 
     };
   } catch (error) {
