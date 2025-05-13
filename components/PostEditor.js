@@ -66,6 +66,12 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const [imageAlt, setImageAlt] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [previousImages, setPreviousImages] = useState([]);
+  
+  // Add refs for tracking cursor position and scroll position
+  const lastCursorPos = useRef(null);
+  const lastScrollPos = useRef(0);
+  const contentUpdateSource = useRef('user'); // 'user', 'image', 'file'
+  
   const quillRef = useRef(null);
   const fileInputRef = useRef(null);
   const textEditorRef = useRef(null);
@@ -316,16 +322,19 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     setContent(newContent);
     
     // Force focus and set cursor position after inserted text, maintain scroll
+    // Use a longer timeout to ensure React has completed the state update and re-render
     setTimeout(() => {
-      textEditor.focus();
-      
-      // Set cursor position after inserted text
-      const newCursorPos = startPos + text.length;
-      textEditor.setSelectionRange(newCursorPos, newCursorPos);
-      
-      // Restore scroll position
-      textEditor.scrollTop = scrollTop;
-    }, 10);
+      if (textEditor) {
+        textEditor.focus();
+        
+        // Set cursor position after inserted text
+        const newCursorPos = startPos + text.length;
+        textEditor.setSelectionRange(newCursorPos, newCursorPos);
+        
+        // Restore scroll position
+        textEditor.scrollTop = scrollTop;
+      }
+    }, 50);
     
     return true;
   };
@@ -368,9 +377,21 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   // Handle image upload with scroll position preservation
   const handleImageUpload = async () => {
     // Save scroll position before upload starts
-    const currentScrollTop = editorType === 'markdown' 
-      ? textEditorRef.current?.scrollTop 
-      : document.querySelector('.ql-editor')?.scrollTop;
+    if (editorType === 'markdown' && textEditorRef.current) {
+      lastScrollPos.current = textEditorRef.current.scrollTop;
+      if (textEditorRef.current.selectionStart !== undefined) {
+        lastCursorPos.current = {
+          start: textEditorRef.current.selectionStart,
+          end: textEditorRef.current.selectionEnd
+        };
+      }
+      contentUpdateSource.current = 'image';
+    } else if (editorType === 'richtext') {
+      const editorElement = document.querySelector('.ql-editor');
+      if (editorElement) {
+        lastScrollPos.current = editorElement.scrollTop;
+      }
+    }
     
     try {
       const imageResult = await uploadImage();
@@ -386,29 +407,25 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         if (editorType === 'markdown') {
           // Insert markdown image tag at cursor position
           const imageMarkdown = `![Image](${imagePath})`;
-          const inserted = insertAtCursor(imageMarkdown);
           
-          if (!inserted) {
+          if (lastCursorPos.current && textEditorRef.current) {
+            const startPos = lastCursorPos.current.start;
+            const endPos = lastCursorPos.current.end;
+            const textBeforeCursor = content.substring(0, startPos);
+            const textAfterCursor = content.substring(endPos);
+            
+            // Update content with image inserted at cursor position
+            setContent(textBeforeCursor + imageMarkdown + textAfterCursor);
+          } else {
             // Fallback: append to the end
             setContent(prev => `${prev}\n\n${imageMarkdown}`);
           }
-          
-          // Restore scroll position
-          setTimeout(() => {
-            if (textEditorRef.current && typeof currentScrollTop === 'number') {
-              textEditorRef.current.scrollTop = currentScrollTop;
-            }
-          }, 50);
           
           showNotification('Image inserted successfully!', 'success');
         } else {
           // Insert image in rich text editor
           const quill = quillRef.current?.getEditor();
           if (quill) {
-            // Save scroll position before insertion
-            const editorElement = document.querySelector('.ql-editor');
-            const scrollTop = editorElement?.scrollTop || 0;
-            
             // Get the current selection range or use the end of the document
             const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
             
@@ -417,13 +434,6 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
             
             // Move cursor after the image
             quill.setSelection(range.index + 1, 0);
-            
-            // Restore scroll position
-            setTimeout(() => {
-              if (editorElement) {
-                editorElement.scrollTop = scrollTop;
-              }
-            }, 50);
             
             showNotification('Image inserted successfully!', 'success');
           } else {
@@ -474,7 +484,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         setContent(prev => `${prev}\n\n${imageMarkdown}`);
       }
       
-      // Restore scroll position
+      // Restore scroll position with a longer timeout
       setTimeout(() => {
         if (textEditorRef.current && typeof currentScrollTop === 'number') {
           textEditorRef.current.scrollTop = currentScrollTop;
@@ -499,7 +509,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         // Move cursor after the image
         quill.setSelection(range.index + 1, 0);
         
-        // Restore scroll position
+        // Restore scroll position with a longer timeout
         setTimeout(() => {
           if (editorElement) {
             editorElement.scrollTop = scrollTop;
@@ -561,6 +571,36 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     onSave(updatedPost);
   };
 
+  // Maintain scroll position after content updates
+  useEffect(() => {
+    // Only restore position when content was updated by image insertion, not user typing
+    if (contentUpdateSource.current === 'image' || contentUpdateSource.current === 'file') {
+      // Use a slightly longer timeout to ensure React has finished rendering
+      setTimeout(() => {
+        if (editorType === 'markdown' && textEditorRef.current) {
+          textEditorRef.current.scrollTop = lastScrollPos.current;
+          
+          // Also restore cursor position if available
+          if (lastCursorPos.current) {
+            const newCursorPos = lastCursorPos.current.start + 
+              (contentUpdateSource.current === 'image' ? 
+                (editorType === 'markdown' ? '![Image](path)'.length : 1) : 0);
+                
+            textEditorRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          }
+        } else if (editorType === 'richtext') {
+          const editorElement = document.querySelector('.ql-editor');
+          if (editorElement) {
+            editorElement.scrollTop = lastScrollPos.current;
+          }
+        }
+        
+        // Reset update source
+        contentUpdateSource.current = 'user';
+      }, 100);
+    }
+  }, [content, htmlContent]);
+  
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
       {/* Title input */}
@@ -685,7 +725,34 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               fullWidth
               variant="outlined"
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                contentUpdateSource.current = 'user';
+                setContent(e.target.value);
+              }}
+              onFocus={() => {
+                if (textEditorRef.current) {
+                  lastScrollPos.current = textEditorRef.current.scrollTop;
+                  if (textEditorRef.current.selectionStart !== undefined) {
+                    lastCursorPos.current = {
+                      start: textEditorRef.current.selectionStart,
+                      end: textEditorRef.current.selectionEnd
+                    };
+                  }
+                }
+              }}
+              onScroll={() => {
+                if (textEditorRef.current) {
+                  lastScrollPos.current = textEditorRef.current.scrollTop;
+                }
+              }}
+              onClick={() => {
+                if (textEditorRef.current && textEditorRef.current.selectionStart !== undefined) {
+                  lastCursorPos.current = {
+                    start: textEditorRef.current.selectionStart,
+                    end: textEditorRef.current.selectionEnd
+                  };
+                }
+              }}
               sx={{ 
                 fontFamily: 'monospace',
                 '& .MuiInputBase-root': {
