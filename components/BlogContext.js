@@ -41,27 +41,48 @@ export const BlogProvider = ({ children }) => {
   // Save a post (create or update)
   const savePost = async (post) => {
     try {
+      // Ensure post has basic structure
+      const postToSave = { ...post };
+      
       // If post doesn't have an id, assign one
-      if (!post.id) {
-        post.id = uuidv4();
-        post.created = new Date().toISOString();
+      if (!postToSave.id) {
+        postToSave.id = uuidv4();
+      }
+      
+      // Add creation date if it doesn't exist
+      if (!postToSave.createdAt) {
+        postToSave.createdAt = new Date().toISOString();
       }
 
-      // Update the modified date
-      post.modified = new Date().toISOString();
+      // Always update the modified date
+      postToSave.updatedAt = new Date().toISOString();
+      
+      // Make sure we have title and content (even if empty)
+      if (!postToSave.title) postToSave.title = '';
+      if (!postToSave.content) postToSave.content = '';
+      
+      // Ensure we have a status
+      if (!postToSave.status) postToSave.status = 'draft';
+      
+      console.log('Saving post:', postToSave);
 
       // Save using Electron or localStorage
       if (window.electronAPI) {
-        await window.electronAPI.savePost(post);
+        const result = await window.electronAPI.savePost(postToSave);
+        console.log('Electron save result:', result);
+        
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Failed to save post');
+        }
       } else {
         // Fallback for development in browser
         const storedPosts = JSON.parse(localStorage.getItem('posts') || '[]');
-        const existingPostIndex = storedPosts.findIndex(p => p.id === post.id);
+        const existingPostIndex = storedPosts.findIndex(p => p.id === postToSave.id);
         
         if (existingPostIndex >= 0) {
-          storedPosts[existingPostIndex] = post;
+          storedPosts[existingPostIndex] = postToSave;
         } else {
-          storedPosts.push(post);
+          storedPosts.push(postToSave);
         }
         
         localStorage.setItem('posts', JSON.stringify(storedPosts));
@@ -69,18 +90,18 @@ export const BlogProvider = ({ children }) => {
 
       // Update state
       setPosts(currentPosts => {
-        const existingPostIndex = currentPosts.findIndex(p => p.id === post.id);
+        const existingPostIndex = currentPosts.findIndex(p => p.id === postToSave.id);
         
         if (existingPostIndex >= 0) {
           const updatedPosts = [...currentPosts];
-          updatedPosts[existingPostIndex] = post;
+          updatedPosts[existingPostIndex] = postToSave;
           return updatedPosts;
         } else {
-          return [...currentPosts, post];
+          return [...currentPosts, postToSave];
         }
       });
 
-      return post;
+      return postToSave;
     } catch (err) {
       console.error('Error saving post:', err);
       throw err;

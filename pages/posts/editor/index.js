@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -18,9 +18,10 @@ import PostEditor from '../../../components/PostEditor';
 
 export default function CreatePost() {
   const router = useRouter();
-  const { addPost } = useBlogContext();
+  const { savePost } = useBlogContext();
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const editorRef = useRef(null);
 
   // Handle form submission
   const handleSave = async (postData, isAutoSave = false) => {
@@ -29,7 +30,7 @@ export default function CreatePost() {
     
     try {
       setLoading(true);
-      await addPost(postData);
+      await savePost(postData);
       
       setSnackbar({
         open: true,
@@ -49,6 +50,14 @@ export default function CreatePost() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle Save Post button click at the top
+  const handleSavePost = () => {
+    if (editorRef.current && editorRef.current.savePost) {
+      // Use the exposed savePost method directly
+      editorRef.current.savePost();
     }
   };
 
@@ -83,7 +92,7 @@ export default function CreatePost() {
             variant="contained"
             color="primary"
             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-            onClick={() => document.getElementById('post-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))}
+            onClick={handleSavePost}
             disabled={loading}
           >
             Save Post
@@ -93,6 +102,7 @@ export default function CreatePost() {
         {/* Editor Form */}
         <Box id="post-form">
           <PostEditor 
+            ref={editorRef}
             post={{}} // Empty post for new creation
             onSave={handleSave}
             onCancel={handleGoBack}

@@ -98,8 +98,25 @@ ipcMain.handle('get-posts', async () => {
 
 ipcMain.handle('save-post', async (_, post) => {
   try {
+    // First ensure the data directory exists
+    if (!fs.existsSync(dataDir)) {
+      await mkdirAsync(dataDir, { recursive: true });
+      console.log(`Created data directory at: ${dataDir}`);
+    }
+    
+    // Validate post has required fields
+    if (!post || !post.id) {
+      console.error('Invalid post data:', post);
+      return { success: false, error: 'Invalid post data - missing ID' };
+    }
+    
     const fileName = `${post.id}.json`;
-    await writeFileAsync(path.join(dataDir, fileName), JSON.stringify(post, null, 2), 'utf8');
+    const filePath = path.join(dataDir, fileName);
+    
+    console.log(`Saving post to file: ${filePath}`);
+    await writeFileAsync(filePath, JSON.stringify(post, null, 2), 'utf8');
+    console.log(`Successfully saved post: ${post.id}`);
+    
     return { success: true };
   } catch (error) {
     console.error('Error saving post:', error);
