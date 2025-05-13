@@ -102,13 +102,8 @@ function createMarkdownCheatSheetWindow() {
     },
   });
 
-  // Load the markdown cheat sheet page
-  if (app.isPackaged) {
-    // Use electron-serve to load the markdown cheatsheet
-    loadURL(markdownCheatSheetWindow, '/markdown-cheatsheet');
-  } else {
-    markdownCheatSheetWindow.loadURL('http://localhost:3000/markdown-cheatsheet');
-  }
+  // Load our standalone markdown cheat sheet HTML file with styles inlined
+  markdownCheatSheetWindow.loadFile(path.join(__dirname, 'markdown-cheatsheet.html'));
 
   // Clean up when window is closed
   markdownCheatSheetWindow.on('closed', () => {
