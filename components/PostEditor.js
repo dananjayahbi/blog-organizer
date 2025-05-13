@@ -211,7 +211,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   useEffect(() => {
     if (editorType === 'markdown' && htmlContent && turndownInstance) {
       const markdown = turndownInstance.turndown(htmlContent);
-      setContent(markdown);
+      setContent(marked.parse(markdown));
     } else if (editorType === 'richtext' && content) {
       // Convert Markdown to HTML when switching to richtext
       setHtmlContent(marked.parse(content));
@@ -220,19 +220,26 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   
   // Calculate editor height based on content length
   useEffect(() => {
-    // Base height calculation for both markdown and rich text editors
-    const baseHeight = 600;
+    // For both markdown and rich text editors, calculate height based on content
     const contentLength = content.length;
+    const lineCount = content.split('\n').length;
     
-    // For rich text editor: minimum 1000px, grows with content
-    const richTextHeight = Math.max(1000, 1000 + Math.floor(contentLength / 1000) * 100);
+    // Base height is 400px
+    const baseHeight = 400; 
     
-    // For markdown editor: minimum 600px, grows with content but with smaller increments
-    const markdownHeight = Math.max(baseHeight, baseHeight + Math.floor(contentLength / 500) * 50);
+    // Calculate dynamic height based on content
+    // Estimate ~20px per line plus some extra space for padding
+    const calculatedHeight = Math.max(
+      baseHeight,
+      lineCount * 22 + 50 // Each line ~22px + some padding
+    );
     
-    // Set editor height based on current editor type
-    setEditorHeight(editorType === 'richtext' ? richTextHeight : markdownHeight);
-  }, [content, editorType]);
+    // Set a maximum reasonable height to prevent excessive size
+    const maxHeight = 2000;
+    const newHeight = Math.min(calculatedHeight, maxHeight);
+    
+    setEditorHeight(newHeight);
+  }, [content]);
   
   // Handle editor type change
   const handleEditorTypeChange = (event, newType) => {
@@ -249,7 +256,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     // Convert to markdown on change
     if (turndownInstance) {
       const markdown = turndownInstance.turndown(value || '');
-      setContent(markdown);
+      setContent(marked.parse(markdown));
     }
   };
   
@@ -677,16 +684,13 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               multiline
               fullWidth
               variant="outlined"
-              minRows={20}
-              maxRows={40}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               sx={{ 
                 fontFamily: 'monospace',
                 '& .MuiInputBase-root': {
+                  height: 'auto',
                   minHeight: `${editorHeight}px`,
-                  height: `${editorHeight}px`,
-                  overflow: 'auto'
                 }
               }}
             />
@@ -700,7 +704,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               sx={{ 
                 p: 2, 
                 minHeight: `${editorHeight}px`, 
-                height: `${editorHeight}px`,
+                height: 'auto',
                 overflow: 'auto',
                 backgroundColor: darkMode ? 'rgba(20, 20, 20, 0.8)' : 'white'
               }}
@@ -722,11 +726,13 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               mb: 1,
               '.ql-editor': {
                 minHeight: `${editorHeight}px`,
+                height: 'auto',
                 fontSize: '16px',
               },
               '.ql-container': {
                 borderBottomLeftRadius: '4px',
                 borderBottomRightRadius: '4px',
+                height: 'auto',
               },
               '.ql-toolbar': {
                 borderTopLeftRadius: '4px',
