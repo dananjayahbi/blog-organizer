@@ -17,7 +17,11 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
-  Alert
+  Alert,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import { marked } from 'marked';
 import { useBlogContext } from './BlogContext';
@@ -31,6 +35,14 @@ import CodeIcon from '@mui/icons-material/Code';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import LinkIcon from '@mui/icons-material/Link';
+import BuildIcon from '@mui/icons-material/Build';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import CodeOffIcon from '@mui/icons-material/CodeOff';
+import TextFormatIcon from '@mui/icons-material/TextFormat';
+import NoteIcon from '@mui/icons-material/Note';
+import AddIcon from '@mui/icons-material/Add';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -66,6 +78,25 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   const [imageAlt, setImageAlt] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [previousImages, setPreviousImages] = useState([]);
+  
+  // HTML snippets menu state
+  const [snippetsMenuAnchor, setSnippetsMenuAnchor] = useState(null);
+  const isSnippetsMenuOpen = Boolean(snippetsMenuAnchor);
+  
+  // Custom snippets state
+  const [customSnippets, setCustomSnippets] = useState([]);
+  const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
+  const [currentEditingSnippet, setCurrentEditingSnippet] = useState(null);
+  const [snippetTitle, setSnippetTitle] = useState('');
+  const [snippetIcon, setSnippetIcon] = useState('');
+  const [snippetContent, setSnippetContent] = useState('');
+  const [manageSnippetsOpen, setManageSnippetsOpen] = useState(false);
+  
+  // Add refs for tracking cursor position and scroll position
+  const lastCursorPos = useRef(null);
+  const lastScrollPos = useRef(0);
+  const contentUpdateSource = useRef('user'); // 'user', 'image', 'file'
+  
   const quillRef = useRef(null);
   const fileInputRef = useRef(null);
   const textEditorRef = useRef(null);
@@ -99,7 +130,10 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
 
     // Check if any images were removed
     const extractImagesFromContent = (text) => {
-      const regex = /!\[.*?\]\((\/images\/[^)]+)\)/g;
+      // Match both old and new image formats in Markdown:
+      // Old: ![alt](/images/filename.jpg)
+      // New: ![alt](images://filename.jpg)
+      const regex = /!\[.*?\]\((\/images\/[^)]+|images:\/\/[^)]+)\)/g;
       const matches = [];
       let match;
       
@@ -112,7 +146,10 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
 
     // Extract images from HTML content
     const extractImagesFromHtml = (html) => {
-      const regex = /<img[^>]+src=["']?(\/images\/[^"']+)["']?[^>]*>/g;
+      // Match both old and new image formats in HTML:
+      // Old: <img src="/images/filename.jpg" ...>
+      // New: <img src="images://filename.jpg" ...>
+      const regex = /<img[^>]+src=["']?(\/images\/[^"']+|images:\/\/[^"']+)["']?[^>]*>/g;
       const matches = [];
       let match;
       
@@ -133,8 +170,8 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     
     // Find images that were in the previous state but are no longer in the content
     const removedImages = previousImages.filter(img => {
-      // Only consider "/images/" paths (uploaded images, not external URLs)
-      if (!img.startsWith('/images/')) return false;
+      // Consider both /images/ paths and images:// protocol
+      if (!img.startsWith('/images/') && !img.startsWith('images://')) return false;
       return !currentImages.includes(img);
     });
     
@@ -142,8 +179,11 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     if (removedImages.length > 0) {
       removedImages.forEach(async (imagePath) => {
         try {
-          // Extract the filename from the path
-          const filename = imagePath.split('/').pop();
+          // Extract the filename from the path, handling both formats
+          const filename = imagePath.startsWith('/images/') 
+            ? imagePath.split('/').pop()
+            : imagePath.replace('images://', '');
+            
           if (filename && window.electronAPI && window.electronAPI.deleteImage) {
             await deleteImage(filename);
             showNotification('Image deleted from storage', 'info');
@@ -211,7 +251,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   useEffect(() => {
     if (editorType === 'markdown' && htmlContent && turndownInstance) {
       const markdown = turndownInstance.turndown(htmlContent);
-      setContent(markdown);
+      setContent(marked.parse(markdown));
     } else if (editorType === 'richtext' && content) {
       // Convert Markdown to HTML when switching to richtext
       setHtmlContent(marked.parse(content));
@@ -220,19 +260,26 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   
   // Calculate editor height based on content length
   useEffect(() => {
-    // Base height calculation for both markdown and rich text editors
-    const baseHeight = 600;
+    // For both markdown and rich text editors, calculate height based on content
     const contentLength = content.length;
+    const lineCount = content.split('\n').length;
     
-    // For rich text editor: minimum 1000px, grows with content
-    const richTextHeight = Math.max(1000, 1000 + Math.floor(contentLength / 1000) * 100);
+    // Base height is 400px
+    const baseHeight = 400; 
     
-    // For markdown editor: minimum 600px, grows with content but with smaller increments
-    const markdownHeight = Math.max(baseHeight, baseHeight + Math.floor(contentLength / 500) * 50);
+    // Calculate dynamic height based on content
+    // Estimate ~20px per line plus some extra space for padding
+    const calculatedHeight = Math.max(
+      baseHeight,
+      lineCount * 22 + 50 // Each line ~22px + some padding
+    );
     
-    // Set editor height based on current editor type
-    setEditorHeight(editorType === 'richtext' ? richTextHeight : markdownHeight);
-  }, [content, editorType]);
+    // Set a maximum reasonable height to prevent excessive size
+    const maxHeight = 2000;
+    const newHeight = Math.min(calculatedHeight, maxHeight);
+    
+    setEditorHeight(newHeight);
+  }, [content]);
   
   // Handle editor type change
   const handleEditorTypeChange = (event, newType) => {
@@ -249,7 +296,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     // Convert to markdown on change
     if (turndownInstance) {
       const markdown = turndownInstance.turndown(value || '');
-      setContent(markdown);
+      setContent(marked.parse(markdown));
     }
   };
   
@@ -309,16 +356,19 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     setContent(newContent);
     
     // Force focus and set cursor position after inserted text, maintain scroll
+    // Use a longer timeout to ensure React has completed the state update and re-render
     setTimeout(() => {
-      textEditor.focus();
-      
-      // Set cursor position after inserted text
-      const newCursorPos = startPos + text.length;
-      textEditor.setSelectionRange(newCursorPos, newCursorPos);
-      
-      // Restore scroll position
-      textEditor.scrollTop = scrollTop;
-    }, 10);
+      if (textEditor) {
+        textEditor.focus();
+        
+        // Set cursor position after inserted text
+        const newCursorPos = startPos + text.length;
+        textEditor.setSelectionRange(newCursorPos, newCursorPos);
+        
+        // Restore scroll position
+        textEditor.scrollTop = scrollTop;
+      }
+    }, 50);
     
     return true;
   };
@@ -361,9 +411,21 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   // Handle image upload with scroll position preservation
   const handleImageUpload = async () => {
     // Save scroll position before upload starts
-    const currentScrollTop = editorType === 'markdown' 
-      ? textEditorRef.current?.scrollTop 
-      : document.querySelector('.ql-editor')?.scrollTop;
+    if (editorType === 'markdown' && textEditorRef.current) {
+      lastScrollPos.current = textEditorRef.current.scrollTop;
+      if (textEditorRef.current.selectionStart !== undefined) {
+        lastCursorPos.current = {
+          start: textEditorRef.current.selectionStart,
+          end: textEditorRef.current.selectionEnd
+        };
+      }
+      contentUpdateSource.current = 'image';
+    } else if (editorType === 'richtext') {
+      const editorElement = document.querySelector('.ql-editor');
+      if (editorElement) {
+        lastScrollPos.current = editorElement.scrollTop;
+      }
+    }
     
     try {
       const imageResult = await uploadImage();
@@ -379,29 +441,25 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         if (editorType === 'markdown') {
           // Insert markdown image tag at cursor position
           const imageMarkdown = `![Image](${imagePath})`;
-          const inserted = insertAtCursor(imageMarkdown);
           
-          if (!inserted) {
+          if (lastCursorPos.current && textEditorRef.current) {
+            const startPos = lastCursorPos.current.start;
+            const endPos = lastCursorPos.current.end;
+            const textBeforeCursor = content.substring(0, startPos);
+            const textAfterCursor = content.substring(endPos);
+            
+            // Update content with image inserted at cursor position
+            setContent(textBeforeCursor + imageMarkdown + textAfterCursor);
+          } else {
             // Fallback: append to the end
             setContent(prev => `${prev}\n\n${imageMarkdown}`);
           }
-          
-          // Restore scroll position
-          setTimeout(() => {
-            if (textEditorRef.current && typeof currentScrollTop === 'number') {
-              textEditorRef.current.scrollTop = currentScrollTop;
-            }
-          }, 50);
           
           showNotification('Image inserted successfully!', 'success');
         } else {
           // Insert image in rich text editor
           const quill = quillRef.current?.getEditor();
           if (quill) {
-            // Save scroll position before insertion
-            const editorElement = document.querySelector('.ql-editor');
-            const scrollTop = editorElement?.scrollTop || 0;
-            
             // Get the current selection range or use the end of the document
             const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
             
@@ -410,13 +468,6 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
             
             // Move cursor after the image
             quill.setSelection(range.index + 1, 0);
-            
-            // Restore scroll position
-            setTimeout(() => {
-              if (editorElement) {
-                editorElement.scrollTop = scrollTop;
-              }
-            }, 50);
             
             showNotification('Image inserted successfully!', 'success');
           } else {
@@ -467,7 +518,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         setContent(prev => `${prev}\n\n${imageMarkdown}`);
       }
       
-      // Restore scroll position
+      // Restore scroll position with a longer timeout
       setTimeout(() => {
         if (textEditorRef.current && typeof currentScrollTop === 'number') {
           textEditorRef.current.scrollTop = currentScrollTop;
@@ -492,7 +543,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         // Move cursor after the image
         quill.setSelection(range.index + 1, 0);
         
-        // Restore scroll position
+        // Restore scroll position with a longer timeout
         setTimeout(() => {
           if (editorElement) {
             editorElement.scrollTop = scrollTop;
@@ -554,6 +605,214 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     onSave(updatedPost);
   };
 
+  // Maintain scroll position after content updates
+  useEffect(() => {
+    // Only restore position when content was updated by image insertion, not user typing
+    if (contentUpdateSource.current === 'image' || contentUpdateSource.current === 'file') {
+      // Use a slightly longer timeout to ensure React has finished rendering
+      setTimeout(() => {
+        if (editorType === 'markdown' && textEditorRef.current) {
+          textEditorRef.current.scrollTop = lastScrollPos.current;
+          
+          // Also restore cursor position if available
+          if (lastCursorPos.current) {
+            const newCursorPos = lastCursorPos.current.start + 
+              (contentUpdateSource.current === 'image' ? 
+                (editorType === 'markdown' ? '![Image](path)'.length : 1) : 0);
+                
+            textEditorRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          }
+        } else if (editorType === 'richtext') {
+          const editorElement = document.querySelector('.ql-editor');
+          if (editorElement) {
+            editorElement.scrollTop = lastScrollPos.current;
+          }
+        }
+        
+        // Reset update source
+        contentUpdateSource.current = 'user';
+      }, 100);
+    }
+  }, [content, htmlContent]);
+  
+  // Load custom snippets from file system
+  useEffect(() => {
+    const loadSnippets = async () => {
+      try {
+        if (window.electronAPI && window.electronAPI.getSnippets) {
+          const snippets = await window.electronAPI.getSnippets();
+          if (snippets && snippets.length > 0) {
+            setCustomSnippets(snippets);
+          }
+        } else {
+          // Fallback for development in browser or transition from localStorage
+          try {
+            const storedSnippets = localStorage.getItem('customHtmlSnippets');
+            if (storedSnippets) {
+              const parsedSnippets = JSON.parse(storedSnippets);
+              setCustomSnippets(parsedSnippets);
+              
+              // Migrate snippets from localStorage to files if possible
+              if (window.electronAPI && window.electronAPI.saveSnippet) {
+                console.log('Migrating snippets from localStorage to files...');
+                for (const snippet of parsedSnippets) {
+                  await window.electronAPI.saveSnippet(snippet);
+                }
+                // Clear localStorage after migration
+                localStorage.removeItem('customHtmlSnippets');
+              }
+            }
+          } catch (error) {
+            console.error('Failed to load custom snippets from localStorage:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load custom snippets:', error);
+      }
+    };
+    
+    loadSnippets();
+  }, []);
+  
+  // Save custom snippets to file system
+  const saveCustomSnippets = useCallback(async (snippets) => {
+    try {
+      if (window.electronAPI && window.electronAPI.saveSnippet) {
+        // Save each snippet as a separate JSON file
+        for (const snippet of snippets) {
+          await window.electronAPI.saveSnippet(snippet);
+        }
+        
+        // Check for deleted snippets
+        const currentIds = new Set(snippets.map(s => s.id));
+        const deletedSnippets = customSnippets.filter(s => !currentIds.has(s.id));
+        
+        // Delete removed snippets
+        for (const snippet of deletedSnippets) {
+          await window.electronAPI.deleteSnippet(snippet.id);
+        }
+        
+        return true;
+      } else {
+        // Fallback for development in browser
+        localStorage.setItem('customHtmlSnippets', JSON.stringify(snippets));
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to save custom snippets:', error);
+      showNotification('Failed to save custom snippets', 'error');
+      return false;
+    }
+  }, [customSnippets, showNotification]);
+  
+  // Add new custom snippet
+  const handleAddNewSnippet = () => {
+    setCurrentEditingSnippet(null);
+    setSnippetTitle('');
+    setSnippetIcon('');
+    setSnippetContent('');
+    setSnippetDialogOpen(true);
+  };
+  
+  // Edit existing custom snippet
+  const handleEditSnippet = (snippet) => {
+    setCurrentEditingSnippet(snippet);
+    setSnippetTitle(snippet.title);
+    setSnippetIcon(snippet.icon || '');
+    setSnippetContent(snippet.content);
+    setSnippetDialogOpen(true);
+  };
+  
+  // Delete custom snippet
+  const handleDeleteSnippet = async (snippetId) => {
+    try {
+      const updatedSnippets = customSnippets.filter(s => s.id !== snippetId);
+      setCustomSnippets(updatedSnippets);
+      
+      // Delete the snippet file
+      if (window.electronAPI && window.electronAPI.deleteSnippet) {
+        await window.electronAPI.deleteSnippet(snippetId);
+      } else {
+        // Fallback for development in browser
+        await saveCustomSnippets(updatedSnippets);
+      }
+      
+      showNotification('Snippet deleted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to delete snippet:', error);
+      showNotification('Failed to delete snippet', 'error');
+    }
+  };
+  
+  // Save new or edited snippet
+  const handleSaveSnippet = async () => {
+    if (!snippetTitle.trim()) {
+      showNotification('Please enter a title for the snippet', 'warning');
+      return;
+    }
+    
+    if (!snippetContent.trim()) {
+      showNotification('Please enter HTML content for the snippet', 'warning');
+      return;
+    }
+    
+    try {
+      let snippet;
+      let updatedSnippets;
+      
+      if (currentEditingSnippet) {
+        // Update existing snippet
+        snippet = { 
+          ...currentEditingSnippet, 
+          title: snippetTitle.trim(), 
+          icon: snippetIcon.trim(), 
+          content: snippetContent.trim(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        updatedSnippets = customSnippets.map(s => 
+          s.id === currentEditingSnippet.id ? snippet : s
+        );
+        
+        showNotification('Snippet updated successfully', 'success');
+      } else {
+        // Add new snippet
+        snippet = {
+          id: Date.now().toString(),
+          title: snippetTitle.trim(),
+          icon: snippetIcon.trim(),
+          content: snippetContent.trim(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        updatedSnippets = [...customSnippets, snippet];
+        showNotification('New snippet added successfully', 'success');
+      }
+      
+      // Save the snippet to file system or localStorage
+      if (window.electronAPI && window.electronAPI.saveSnippet) {
+        await window.electronAPI.saveSnippet(snippet);
+      } else {
+        // Fallback for development in browser
+        await saveCustomSnippets(updatedSnippets);
+      }
+      
+      setCustomSnippets(updatedSnippets);
+      setSnippetDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save snippet:', error);
+      showNotification('Failed to save snippet', 'error');
+    }
+  };
+  
+  // Open manage snippets dialog
+  const handleManageSnippets = () => {
+    setManageSnippetsOpen(true);
+    // Close the dropdown menu
+    setSnippetsMenuAnchor(null);
+  };
+  
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
       {/* Title input */}
@@ -645,6 +904,16 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               <Typography variant="subtitle1">Editor</Typography>
               <Box>
                 <Button 
+                  startIcon={<BuildIcon />}
+                  onClick={(e) => setSnippetsMenuAnchor(e.currentTarget)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                  color="primary"
+                >
+                  HTML Tools
+                </Button>
+                <Button 
                   startIcon={<FileUploadIcon />}
                   onClick={handleMarkdownFileUpload}
                   size="small"
@@ -677,16 +946,40 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               multiline
               fullWidth
               variant="outlined"
-              minRows={20}
-              maxRows={40}
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                contentUpdateSource.current = 'user';
+                setContent(e.target.value);
+              }}
+              onFocus={() => {
+                if (textEditorRef.current) {
+                  lastScrollPos.current = textEditorRef.current.scrollTop;
+                  if (textEditorRef.current.selectionStart !== undefined) {
+                    lastCursorPos.current = {
+                      start: textEditorRef.current.selectionStart,
+                      end: textEditorRef.current.selectionEnd
+                    };
+                  }
+                }
+              }}
+              onScroll={() => {
+                if (textEditorRef.current) {
+                  lastScrollPos.current = textEditorRef.current.scrollTop;
+                }
+              }}
+              onClick={() => {
+                if (textEditorRef.current && textEditorRef.current.selectionStart !== undefined) {
+                  lastCursorPos.current = {
+                    start: textEditorRef.current.selectionStart,
+                    end: textEditorRef.current.selectionEnd
+                  };
+                }
+              }}
               sx={{ 
                 fontFamily: 'monospace',
                 '& .MuiInputBase-root': {
+                  height: 'auto',
                   minHeight: `${editorHeight}px`,
-                  height: `${editorHeight}px`,
-                  overflow: 'auto'
                 }
               }}
             />
@@ -700,7 +993,7 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               sx={{ 
                 p: 2, 
                 minHeight: `${editorHeight}px`, 
-                height: `${editorHeight}px`,
+                height: 'auto',
                 overflow: 'auto',
                 backgroundColor: darkMode ? 'rgba(20, 20, 20, 0.8)' : 'white'
               }}
@@ -722,11 +1015,13 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
               mb: 1,
               '.ql-editor': {
                 minHeight: `${editorHeight}px`,
+                height: 'auto',
                 fontSize: '16px',
               },
               '.ql-container': {
                 borderBottomLeftRadius: '4px',
                 borderBottomRightRadius: '4px',
+                height: 'auto',
               },
               '.ql-toolbar': {
                 borderTopLeftRadius: '4px',
@@ -803,6 +1098,184 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
         </DialogActions>
       </Dialog>
       
+      {/* HTML Snippets Menu */}
+      <Menu
+        anchorEl={snippetsMenuAnchor}
+        open={isSnippetsMenuOpen}
+        onClose={() => setSnippetsMenuAnchor(null)}
+      >
+        <MenuItem onClick={() => {
+          insertAtCursor(`<p align="center">
+  <img src="IMAGE_URL_HERE" alt="Centered Image" width="150">
+</p>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Centered image snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <CenterFocusStrongIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Centered Image</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<div style="text-align: center;">
+  Centered text content here
+</div>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Centered text snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <TextFormatIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Centered Text</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<table>
+  <thead>
+    <tr>
+      <th>Header 1</th>
+      <th>Header 2</th>
+      <th>Header 3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Row 1, Cell 1</td>
+      <td>Row 1, Cell 2</td>
+      <td>Row 1, Cell 3</td>
+    </tr>
+    <tr>
+      <td>Row 2, Cell 1</td>
+      <td>Row 2, Cell 2</td>
+      <td>Row 2, Cell 3</td>
+    </tr>
+  </tbody>
+</table>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Table snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <TableChartIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>HTML Table</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<div style="border-left: 4px solid #ccc; padding-left: 16px; font-style: italic; margin: 20px 0;">
+  Blockquote content here - this is styled with HTML instead of Markdown
+</div>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Styled blockquote snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <FormatBoldIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Styled Blockquote</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<pre style="background-color: #f5f5f5; padding: 16px; border-radius: 4px; overflow: auto;">
+<code>
+// Your code here
+function example() {
+  console.log("This is a code block with styling");
+}
+</code>
+</pre>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Code block snippet inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <CodeOffIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Styled Code Block</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          insertAtCursor(`<details>
+  <summary>Click to expand</summary>
+  
+  Hidden content goes here. This is useful for FAQs or other expandable sections.
+</details>`);
+          setSnippetsMenuAnchor(null);
+          showNotification('Collapsible section inserted!', 'success');
+        }}>
+          <ListItemIcon>
+            <NoteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Collapsible Section</ListItemText>
+        </MenuItem>
+
+        {/* Display custom snippets */}
+        {customSnippets.length > 0 && (
+          <>
+            <Divider />
+            <Typography variant="caption" sx={{ px: 2, py: 1, display: 'block', color: 'text.secondary' }}>
+              Custom Snippets
+            </Typography>
+            
+            {customSnippets.map((snippet) => (
+              <MenuItem key={snippet.id} onClick={() => {
+                insertAtCursor(snippet.content);
+                setSnippetsMenuAnchor(null);
+                showNotification(`${snippet.title} snippet inserted!`, 'success');
+              }}>
+                <ListItemIcon>
+                  {snippet.icon ? (
+                    // Try to use dynamically imported icon or fallback to default
+                    (() => {
+                      try {
+                        // Simple approach to load Material UI icons
+                        const iconMap = {
+                          code: CodeIcon,
+                          note: NoteIcon, 
+                          image: ImageIcon,
+                          link: LinkIcon,
+                          text: TextFormatIcon,
+                          table: TableChartIcon,
+                          build: BuildIcon,
+                          add: AddIcon,
+                          delete: DeleteIcon,
+                          edit: EditIcon,
+                          save: SaveIcon,
+                          preview: PreviewIcon
+                        };
+                        
+                        const IconComponent = iconMap[snippet.icon] || NoteIcon;
+                        return <IconComponent fontSize="small" />;
+                      } catch (error) {
+                        return <NoteIcon fontSize="small" />;
+                      }
+                    })()
+                  ) : (
+                    <NoteIcon fontSize="small" />
+                  )}
+                </ListItemIcon>
+                <ListItemText>{snippet.title}</ListItemText>
+              </MenuItem>
+            ))}
+          </>
+        )}
+        
+        <Divider />
+        
+        {/* Manage snippets options */}
+        <MenuItem onClick={handleManageSnippets}>
+          <ListItemIcon>
+            <MoreVertIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Manage Snippets...</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={handleAddNewSnippet}>
+          <ListItemIcon>
+            <AddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Add New Snippet...</ListItemText>
+        </MenuItem>
+      </Menu>
+      
       {/* Notifications */}
       <Snackbar 
         open={snackbar.open} 
@@ -832,6 +1305,141 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
           Save
         </Button>
       </Box>
+      
+      {/* Manage Snippets Dialog */}
+      <Dialog
+        open={manageSnippetsOpen}
+        onClose={() => setManageSnippetsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Manage HTML Snippets</DialogTitle>
+        <DialogContent>
+          <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+            {customSnippets.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                No custom snippets found. Add your first snippet!
+              </Typography>
+            ) : (
+              customSnippets.map((snippet) => (
+                <Paper 
+                  key={snippet.id} 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2, 
+                    mb: 1, 
+                    borderRadius: 1,
+                    position: 'relative',
+                    '&:hover': {
+                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                    }
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {snippet.title}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleEditSnippet(snippet)}
+                      sx={{ mr: 1 }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleDeleteSnippet(snippet.id)}
+                      color="error"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  <Divider sx={{ mb: 1 }} />
+                  <Box 
+                    sx={{ 
+                      p: 1, 
+                      borderRadius: 1, 
+                      backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: snippet.content }} 
+                      style={{ whiteSpace: 'nowrap' }}
+                    />
+                  </Box>
+                </Paper>
+              ))
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManageSnippetsOpen(false)}>Close</Button>
+          <Button 
+            onClick={handleAddNewSnippet} 
+            variant="contained" 
+            color="primary"
+            startIcon={<AddIcon />}
+          >
+            Add New Snippet
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snippet Editor Dialog */}
+      <Dialog
+        open={snippetDialogOpen}
+        onClose={() => setSnippetDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{currentEditingSnippet ? 'Edit Snippet' : 'Add New Snippet'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Snippet Title"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetTitle}
+            onChange={(e) => setSnippetTitle(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Icon (optional)"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetIcon}
+            onChange={(e) => setSnippetIcon(e.target.value)}
+            helperText="Enter a Material Icons name, e.g., 'code'"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="HTML Content"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetContent}
+            onChange={(e) => setSnippetContent(e.target.value)}
+            multiline
+            rows={4}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSnippetDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleSaveSnippet} 
+            variant="contained" 
+            color="primary"
+          >
+            Save Snippet
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 });

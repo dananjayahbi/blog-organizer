@@ -41,27 +41,48 @@ export const BlogProvider = ({ children }) => {
   // Save a post (create or update)
   const savePost = async (post) => {
     try {
+      // Ensure post has basic structure
+      const postToSave = { ...post };
+      
       // If post doesn't have an id, assign one
-      if (!post.id) {
-        post.id = uuidv4();
-        post.created = new Date().toISOString();
+      if (!postToSave.id) {
+        postToSave.id = uuidv4();
+      }
+      
+      // Add creation date if it doesn't exist
+      if (!postToSave.createdAt) {
+        postToSave.createdAt = new Date().toISOString();
       }
 
-      // Update the modified date
-      post.modified = new Date().toISOString();
+      // Always update the modified date
+      postToSave.updatedAt = new Date().toISOString();
+      
+      // Make sure we have title and content (even if empty)
+      if (!postToSave.title) postToSave.title = '';
+      if (!postToSave.content) postToSave.content = '';
+      
+      // Ensure we have a status
+      if (!postToSave.status) postToSave.status = 'draft';
+      
+      console.log('Saving post:', postToSave);
 
       // Save using Electron or localStorage
       if (window.electronAPI) {
-        await window.electronAPI.savePost(post);
+        const result = await window.electronAPI.savePost(postToSave);
+        console.log('Electron save result:', result);
+        
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Failed to save post');
+        }
       } else {
         // Fallback for development in browser
         const storedPosts = JSON.parse(localStorage.getItem('posts') || '[]');
-        const existingPostIndex = storedPosts.findIndex(p => p.id === post.id);
+        const existingPostIndex = storedPosts.findIndex(p => p.id === postToSave.id);
         
         if (existingPostIndex >= 0) {
-          storedPosts[existingPostIndex] = post;
+          storedPosts[existingPostIndex] = postToSave;
         } else {
-          storedPosts.push(post);
+          storedPosts.push(postToSave);
         }
         
         localStorage.setItem('posts', JSON.stringify(storedPosts));
@@ -69,18 +90,18 @@ export const BlogProvider = ({ children }) => {
 
       // Update state
       setPosts(currentPosts => {
-        const existingPostIndex = currentPosts.findIndex(p => p.id === post.id);
+        const existingPostIndex = currentPosts.findIndex(p => p.id === postToSave.id);
         
         if (existingPostIndex >= 0) {
           const updatedPosts = [...currentPosts];
-          updatedPosts[existingPostIndex] = post;
+          updatedPosts[existingPostIndex] = postToSave;
           return updatedPosts;
         } else {
-          return [...currentPosts, post];
+          return [...currentPosts, postToSave];
         }
       });
 
-      return post;
+      return postToSave;
     } catch (err) {
       console.error('Error saving post:', err);
       throw err;
@@ -90,7 +111,32 @@ export const BlogProvider = ({ children }) => {
   // Delete a post
   const deletePost = async (postId) => {
     try {
-      // Delete using Electron or localStorage
+      // First get the post to check for images
+      let postToDelete = posts.find(p => p.id === postId);
+      
+      // If post exists and has images, delete them
+      if (postToDelete && postToDelete.images && postToDelete.images.length > 0) {
+        // Filter only uploaded images (those with paths starting with /images/)
+        const uploadedImages = postToDelete.images.filter(img => 
+          typeof img === 'string' && img.startsWith('/images/')
+        );
+
+        // Delete each uploaded image
+        for (const imagePath of uploadedImages) {
+          try {
+            // Extract the filename from the path
+            const filename = imagePath.split('/').pop();
+            if (filename && window.electronAPI && window.electronAPI.deleteImage) {
+              await deleteImage(filename);
+              console.log('Image deleted:', filename);
+            }
+          } catch (error) {
+            console.error('Failed to delete image:', error);
+          }
+        }
+      }
+
+      // Delete the post using Electron or localStorage
       if (window.electronAPI) {
         await window.electronAPI.deletePost(postId);
       } else {
@@ -104,6 +150,87 @@ export const BlogProvider = ({ children }) => {
       setPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
     } catch (err) {
       console.error('Error deleting post:', err);
+      throw err;
+    }
+  };
+
+  // Archive a post
+  const archivePost = async (postId) => {
+    try {
+      // Find the post to update
+      const postToArchive = posts.find(p => p.id === postId);
+      
+      if (!postToArchive) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Update the post's status to archived
+      const updatedPost = {
+        ...postToArchive,
+        status: 'archived',
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error archiving post:', err);
+      throw err;
+    }
+  };
+
+  // Unarchive a post (restore to draft)
+  const unarchivePost = async (postId) => {
+    try {
+      // Find the post to update
+      const postToUnarchive = posts.find(p => p.id === postId);
+      
+      if (!postToUnarchive) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Update the post's status to draft
+      const updatedPost = {
+        ...postToUnarchive,
+        status: 'draft',
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error unarchiving post:', err);
+      throw err;
+    }
+  };
+
+  // Update a post's fields
+  const updatePost = async (postId, updates) => {
+    try {
+      // Find the post to update
+      const postToUpdate = posts.find(p => p.id === postId);
+      
+      if (!postToUpdate) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Create updated post with new fields
+      const updatedPost = {
+        ...postToUpdate,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error updating post:', err);
       throw err;
     }
   };
@@ -149,7 +276,10 @@ export const BlogProvider = ({ children }) => {
         savePost,
         deletePost,
         uploadImage,
-        deleteImage
+        deleteImage,
+        updatePost,
+        archivePost,
+        unarchivePost
       }}
     >
       {children}

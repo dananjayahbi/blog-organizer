@@ -63,6 +63,8 @@ export default function PostList({
   const [isPublished, setIsPublished] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [unarchiveDialogOpen, setUnarchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [postToDelete, setPostToDelete] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [listHeight, setListHeight] = useState(500); // Default height
   const listContainerRef = useRef(null);
@@ -169,6 +171,27 @@ export default function PostList({
   // Handle post view navigation
   const handleViewPost = (postId) => {
     router.push(`/posts/view/${postId}`);
+  };
+
+  // Handle delete post click
+  const handleDeleteClick = (post) => {
+    setPostToDelete(post);
+    setDeleteDialogOpen(true);
+  };
+
+  // Close delete dialog
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setPostToDelete(null);
+  };
+
+  // Confirm delete post
+  const handleConfirmDelete = () => {
+    if (postToDelete) {
+      onDelete(postToDelete.id);
+      setDeleteDialogOpen(false);
+      setPostToDelete(null);
+    }
   };
 
   // Filter posts based on search term, selected tag, and status
@@ -330,7 +353,7 @@ export default function PostList({
                 <IconButton edge="end" onClick={() => handleArchiveClick(post)} title="Archive">
                   <ArchiveIcon fontSize="small" />
                 </IconButton>
-                <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
+                <IconButton edge="end" onClick={() => handleDeleteClick(post)} title="Delete">
                   <DeleteIcon />
                 </IconButton>
               </>
@@ -346,7 +369,7 @@ export default function PostList({
                 <IconButton edge="end" onClick={() => onEdit(post)} title="Edit">
                   <EditIcon />
                 </IconButton>
-                <IconButton edge="end" onClick={() => onDelete(post.id)} title="Delete">
+                <IconButton edge="end" onClick={() => handleDeleteClick(post)} title="Delete">
                   <DeleteIcon />
                 </IconButton>
               </>
@@ -540,6 +563,27 @@ export default function PostList({
           <Button onClick={handleCloseUnarchiveDialog}>Cancel</Button>
           <Button onClick={handleUnarchivePost} color="primary" variant="contained">
             Restore to Drafts
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>Delete Post</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <Typography variant="body1" gutterBottom>
+              Are you sure you want to delete "{postToDelete?.title}"?
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              This action cannot be undone. All associated uploaded images will also be deleted.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

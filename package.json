@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev",
     "dev:electron": "electron .",
-    "build": "next build && next export -o renderer/out",
+    "build": "next build",
     "start": "electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder"
@@ -21,6 +21,7 @@
     "@mui/material": "^5.17.1",
     "@react-pdf/renderer": "^4.3.0",
     "date-fns": "^2.30.0",
+    "electron-serve": "^1.1.0",
     "html-to-image": "^1.11.13",
     "html-to-react": "^1.7.0",
     "marked": "^9.1.6",
@@ -36,7 +37,6 @@
     "concurrently": "^8.2.2",
     "electron": "^26.6.10",
     "electron-builder": "^24.13.3",
-    "electron-serve": "^1.1.0",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -44,7 +44,9 @@
     "productName": "Blog Post Draft Manager",
     "files": [
       "main",
-      "renderer/out/**",
+      "out/**",
+      "data/**",
+      "public/**",
       "package.json"
     ],
     "directories": {
@@ -52,13 +54,17 @@
       "output": "dist"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "certificateSubjectName": null,
+      "signingHashAlgorithms": null,
+      "signAndEditExecutable": false
     },
     "mac": {
       "target": "dmg"
     },
     "linux": {
       "target": "AppImage"
-    }
+    },
+    "asar": true
   }
 }

@@ -1,0 +1,66 @@
+.markdownHelpButton {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: #3f51b5;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: none;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  z-index: 1000;
+  transition: all 0.3s ease;
+}
+
+.markdownHelpButton:hover {
+  transform: scale(1.05);
+  background-color: #303f9f;
+}
+
+.markdownHelpButton:active {
+  transform: scale(0.95);
+}
+
+.markdownHelpButton:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(63, 81, 181, 0.5);
+}
+
+.tooltip {
+  position: absolute;
+  right: 70px;
+  background-color: #333;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tooltip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  margin-top: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent transparent #333;
+}
+
+/* Make the button adapt to dark mode */
+@media (prefers-color-scheme: dark) {
+  .markdownHelpButton {
+    background-color: #5c6bc0;
+  }
+  
+  .markdownHelpButton:hover {
+    background-color: #7986cb;
+  }
+}

@@ -18,4 +18,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  
+  // Markdown Cheat Sheet
+  openMarkdownCheatSheet: () => ipcRenderer.invoke('open-markdown-cheatsheet'),
+  
+  // Snippet operations
+  getSnippets: () => ipcRenderer.invoke('get-snippets'),
+  saveSnippet: (snippet) => ipcRenderer.invoke('save-snippet', snippet),
+  deleteSnippet: (id) => ipcRenderer.invoke('delete-snippet', id),
 });

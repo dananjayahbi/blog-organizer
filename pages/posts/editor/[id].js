@@ -19,7 +19,7 @@ import PostEditor from '../../../components/PostEditor';
 export default function EditPost() {
   const router = useRouter();
   const { id } = router.query;
-  const { posts, loading: postsLoading, error: postsError, updatePost } = useBlogContext();
+  const { posts, loading: postsLoading, error: postsError, savePost } = useBlogContext();
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [post, setPost] = useState(null);
@@ -45,7 +45,9 @@ export default function EditPost() {
     
     try {
       setLoading(true);
-      await updatePost(id, updatedPost);
+      // Ensure we maintain the post ID when updating
+      updatedPost.id = id;
+      await savePost(updatedPost);
       
       setSnackbar({
         open: true,
