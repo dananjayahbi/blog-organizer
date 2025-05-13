@@ -626,31 +626,75 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     }
   }, [content, htmlContent]);
   
-  // Load custom snippets from localStorage
+  // Load custom snippets from file system
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const loadSnippets = async () => {
       try {
-        const storedSnippets = localStorage.getItem('customHtmlSnippets');
-        if (storedSnippets) {
-          setCustomSnippets(JSON.parse(storedSnippets));
+        if (window.electronAPI && window.electronAPI.getSnippets) {
+          const snippets = await window.electronAPI.getSnippets();
+          if (snippets && snippets.length > 0) {
+            setCustomSnippets(snippets);
+          }
+        } else {
+          // Fallback for development in browser or transition from localStorage
+          try {
+            const storedSnippets = localStorage.getItem('customHtmlSnippets');
+            if (storedSnippets) {
+              const parsedSnippets = JSON.parse(storedSnippets);
+              setCustomSnippets(parsedSnippets);
+              
+              // Migrate snippets from localStorage to files if possible
+              if (window.electronAPI && window.electronAPI.saveSnippet) {
+                console.log('Migrating snippets from localStorage to files...');
+                for (const snippet of parsedSnippets) {
+                  await window.electronAPI.saveSnippet(snippet);
+                }
+                // Clear localStorage after migration
+                localStorage.removeItem('customHtmlSnippets');
+              }
+            }
+          } catch (error) {
+            console.error('Failed to load custom snippets from localStorage:', error);
+          }
         }
       } catch (error) {
         console.error('Failed to load custom snippets:', error);
       }
-    }
+    };
+    
+    loadSnippets();
   }, []);
   
-  // Save custom snippets to localStorage
-  const saveCustomSnippets = useCallback((snippets) => {
-    if (typeof window !== 'undefined') {
-      try {
+  // Save custom snippets to file system
+  const saveCustomSnippets = useCallback(async (snippets) => {
+    try {
+      if (window.electronAPI && window.electronAPI.saveSnippet) {
+        // Save each snippet as a separate JSON file
+        for (const snippet of snippets) {
+          await window.electronAPI.saveSnippet(snippet);
+        }
+        
+        // Check for deleted snippets
+        const currentIds = new Set(snippets.map(s => s.id));
+        const deletedSnippets = customSnippets.filter(s => !currentIds.has(s.id));
+        
+        // Delete removed snippets
+        for (const snippet of deletedSnippets) {
+          await window.electronAPI.deleteSnippet(snippet.id);
+        }
+        
+        return true;
+      } else {
+        // Fallback for development in browser
         localStorage.setItem('customHtmlSnippets', JSON.stringify(snippets));
-      } catch (error) {
-        console.error('Failed to save custom snippets:', error);
-        showNotification('Failed to save custom snippets', 'error');
+        return true;
       }
+    } catch (error) {
+      console.error('Failed to save custom snippets:', error);
+      showNotification('Failed to save custom snippets', 'error');
+      return false;
     }
-  }, []);
+  }, [customSnippets, showNotification]);
   
   // Add new custom snippet
   const handleAddNewSnippet = () => {
@@ -671,15 +715,28 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   };
   
   // Delete custom snippet
-  const handleDeleteSnippet = (snippetId) => {
-    const updatedSnippets = customSnippets.filter(s => s.id !== snippetId);
-    setCustomSnippets(updatedSnippets);
-    saveCustomSnippets(updatedSnippets);
-    showNotification('Snippet deleted successfully', 'success');
+  const handleDeleteSnippet = async (snippetId) => {
+    try {
+      const updatedSnippets = customSnippets.filter(s => s.id !== snippetId);
+      setCustomSnippets(updatedSnippets);
+      
+      // Delete the snippet file
+      if (window.electronAPI && window.electronAPI.deleteSnippet) {
+        await window.electronAPI.deleteSnippet(snippetId);
+      } else {
+        // Fallback for development in browser
+        await saveCustomSnippets(updatedSnippets);
+      }
+      
+      showNotification('Snippet deleted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to delete snippet:', error);
+      showNotification('Failed to delete snippet', 'error');
+    }
   };
   
   // Save new or edited snippet
-  const handleSaveSnippet = () => {
+  const handleSaveSnippet = async () => {
     if (!snippetTitle.trim()) {
       showNotification('Please enter a title for the snippet', 'warning');
       return;
@@ -690,31 +747,54 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
       return;
     }
     
-    let updatedSnippets;
-    
-    if (currentEditingSnippet) {
-      // Update existing snippet
-      updatedSnippets = customSnippets.map(s => 
-        s.id === currentEditingSnippet.id 
-          ? { ...s, title: snippetTitle.trim(), icon: snippetIcon.trim(), content: snippetContent.trim() }
-          : s
-      );
-      showNotification('Snippet updated successfully', 'success');
-    } else {
-      // Add new snippet
-      const newSnippet = {
-        id: Date.now().toString(),
-        title: snippetTitle.trim(),
-        icon: snippetIcon.trim(),
-        content: snippetContent.trim()
-      };
-      updatedSnippets = [...customSnippets, newSnippet];
-      showNotification('New snippet added successfully', 'success');
+    try {
+      let snippet;
+      let updatedSnippets;
+      
+      if (currentEditingSnippet) {
+        // Update existing snippet
+        snippet = { 
+          ...currentEditingSnippet, 
+          title: snippetTitle.trim(), 
+          icon: snippetIcon.trim(), 
+          content: snippetContent.trim(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        updatedSnippets = customSnippets.map(s => 
+          s.id === currentEditingSnippet.id ? snippet : s
+        );
+        
+        showNotification('Snippet updated successfully', 'success');
+      } else {
+        // Add new snippet
+        snippet = {
+          id: Date.now().toString(),
+          title: snippetTitle.trim(),
+          icon: snippetIcon.trim(),
+          content: snippetContent.trim(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        updatedSnippets = [...customSnippets, snippet];
+        showNotification('New snippet added successfully', 'success');
+      }
+      
+      // Save the snippet to file system or localStorage
+      if (window.electronAPI && window.electronAPI.saveSnippet) {
+        await window.electronAPI.saveSnippet(snippet);
+      } else {
+        // Fallback for development in browser
+        await saveCustomSnippets(updatedSnippets);
+      }
+      
+      setCustomSnippets(updatedSnippets);
+      setSnippetDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save snippet:', error);
+      showNotification('Failed to save snippet', 'error');
     }
-    
-    setCustomSnippets(updatedSnippets);
-    saveCustomSnippets(updatedSnippets);
-    setSnippetDialogOpen(false);
   };
   
   // Open manage snippets dialog

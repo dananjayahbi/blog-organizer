@@ -13,6 +13,7 @@ const unlinkAsync = promisify(fs.unlink);
 // Path to store blog post data - using project directory instead of userData
 const dataDir = path.join(__dirname, '..', 'data', 'posts');
 const imagesDir = path.join(__dirname, '..', 'public', 'images');
+const snippetsDir = path.join(__dirname, '..', 'data', 'snippets');
 
 // Ensure data directories exist
 const ensureDirectoriesExist = async () => {
@@ -22,6 +23,9 @@ const ensureDirectoriesExist = async () => {
     }
     if (!fs.existsSync(imagesDir)) {
       await mkdirAsync(imagesDir, { recursive: true });
+    }
+    if (!fs.existsSync(snippetsDir)) {
+      await mkdirAsync(snippetsDir, { recursive: true });
     }
   } catch (error) {
     console.error('Error creating directories:', error);
@@ -293,4 +297,64 @@ ipcMain.handle('save-settings', async (event, settings) => {
 ipcMain.handle('open-markdown-cheatsheet', () => {
   createMarkdownCheatSheetWindow();
   return { success: true };
+});
+
+// Snippet file operations
+ipcMain.handle('get-snippets', async () => {
+  try {
+    const files = await readdirAsync(snippetsDir);
+    const snippets = [];
+    
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const content = await readFileAsync(path.join(snippetsDir, file), 'utf8');
+        const snippet = JSON.parse(content);
+        snippets.push(snippet);
+      }
+    }
+    
+    return snippets;
+  } catch (error) {
+    console.error('Error getting snippets:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('save-snippet', async (_, snippet) => {
+  try {
+    // First ensure the snippets directory exists
+    if (!fs.existsSync(snippetsDir)) {
+      await mkdirAsync(snippetsDir, { recursive: true });
+      console.log(`Created snippets directory at: ${snippetsDir}`);
+    }
+    
+    // Validate snippet has required fields
+    if (!snippet || !snippet.id) {
+      console.error('Invalid snippet data:', snippet);
+      return { success: false, error: 'Invalid snippet data - missing ID' };
+    }
+    
+    const fileName = `${snippet.id}.json`;
+    const filePath = path.join(snippetsDir, fileName);
+    
+    console.log(`Saving snippet to file: ${filePath}`);
+    await writeFileAsync(filePath, JSON.stringify(snippet, null, 2), 'utf8');
+    console.log(`Successfully saved snippet: ${snippet.id}`);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving snippet:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-snippet', async (_, id) => {
+  try {
+    const fileName = `${id}.json`;
+    await unlinkAsync(path.join(snippetsDir, fileName));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting snippet:', error);
+    return { success: false, error: error.message };
+  }
 });

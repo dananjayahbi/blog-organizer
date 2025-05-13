@@ -21,4 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Markdown Cheat Sheet
   openMarkdownCheatSheet: () => ipcRenderer.invoke('open-markdown-cheatsheet'),
+  
+  // Snippet operations
+  getSnippets: () => ipcRenderer.invoke('get-snippets'),
+  saveSnippet: (snippet) => ipcRenderer.invoke('save-snippet', snippet),
+  deleteSnippet: (id) => ipcRenderer.invoke('delete-snippet', id),
 });
