@@ -29,10 +29,10 @@ const baseDir = app.isPackaged
 const dataDir = path.join(baseDir, 'data', 'posts');
 const snippetsDir = path.join(baseDir, 'data', 'snippets');
 
-// Images directory - keep in public for dev, but in userData for production
+// Images directory - moved to data/images instead of public/images
 const imagesDir = app.isPackaged
-  ? path.join(app.getPath('userData'), 'images')
-  : path.join(__dirname, '..', 'public', 'images');
+  ? path.join(app.getPath('userData'), 'data', 'images')
+  : path.join(baseDir, 'data', 'images');
 
 // Ensure data directories exist
 const ensureDirectoriesExist = async () => {
@@ -120,16 +120,15 @@ function createMarkdownCheatSheetWindow() {
 app.whenReady().then(async () => {
   await ensureDirectoriesExist();
   
-  // Register a custom protocol to serve images from userData directory in production
-  if (app.isPackaged) {
-    // Register 'images' protocol to serve images from the userData directory
-    protocol = require('electron').protocol;
-    protocol.registerFileProtocol('images', (request, callback) => {
-      const url = request.url.substring(9); // remove 'images://' 
-      const imagePath = path.join(imagesDir, url);
-      callback({ path: imagePath });
-    });
-  }
+  // Register custom protocol to serve images from data/images in both dev and prod
+  protocol = require('electron').protocol;
+  
+  // Register 'images' protocol to serve images from the data/images directory
+  protocol.registerFileProtocol('images', (request, callback) => {
+    const url = request.url.substring(9); // remove 'images://' 
+    const imagePath = path.join(imagesDir, url);
+    callback({ path: imagePath });
+  });
   
   createWindow();
 
@@ -197,7 +196,50 @@ ipcMain.handle('save-post', async (_, post) => {
 
 ipcMain.handle('delete-post', async (_, id) => {
   try {
+    // First get the post content to extract image references
     const fileName = `${id}.json`;
+    const filePath = path.join(dataDir, fileName);
+    
+    // Check if the post file exists before trying to read it
+    if (fs.existsSync(filePath)) {
+      // Read the post file to get the content
+      const postContent = await readFileAsync(filePath, 'utf8');
+      const post = JSON.parse(postContent);
+      
+      // Extract image filenames from the post content
+      const extractImagesFromContent = (content) => {
+        // Match both image formats:
+        // 1. Markdown format: ![alt](images://filename.jpg)
+        // 2. HTML format: <img src="images://filename.jpg" ...>
+        const regex = /!\[.*?\]\(images:\/\/([^)]+)\)|<img[^>]+src=["']images:\/\/([^"']+)["'][^>]*>/g;
+        const images = [];
+        let match;
+        
+        while ((match = regex.exec(content)) !== null) {
+          // The filename will be in either capture group 1 or 2
+          const filename = match[1] || match[2];
+          if (filename) {
+            images.push(filename);
+          }
+        }
+        
+        return images;
+      };
+      
+      // Get image filenames from the post content
+      const imageFilenames = extractImagesFromContent(post.content);
+      
+      // Delete all images associated with this post
+      for (const filename of imageFilenames) {
+        const imagePath = path.join(imagesDir, filename);
+        if (fs.existsSync(imagePath)) {
+          await unlinkAsync(imagePath);
+          console.log(`Deleted image: ${filename}`);
+        }
+      }
+    }
+    
+    // Now delete the post file
     await unlinkAsync(path.join(dataDir, fileName));
     return { success: true };
   } catch (error) {
@@ -224,10 +266,8 @@ ipcMain.handle('select-image', async () => {
     // Copy the file to our app's image directory
     await fs.promises.copyFile(originalPath, targetPath);
     
-    // For production builds, use our custom protocol to serve images from userData
-    const filePath = app.isPackaged 
-      ? `images://${fileName}`
-      : `/images/${fileName}`;
+    // Use the custom protocol for both development and production
+    const filePath = `images://${fileName}`;
     
     return { 
       fileName,

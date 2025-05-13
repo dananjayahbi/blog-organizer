@@ -130,7 +130,10 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
 
     // Check if any images were removed
     const extractImagesFromContent = (text) => {
-      const regex = /!\[.*?\]\((\/images\/[^)]+)\)/g;
+      // Match both old and new image formats in Markdown:
+      // Old: ![alt](/images/filename.jpg)
+      // New: ![alt](images://filename.jpg)
+      const regex = /!\[.*?\]\((\/images\/[^)]+|images:\/\/[^)]+)\)/g;
       const matches = [];
       let match;
       
@@ -143,7 +146,10 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
 
     // Extract images from HTML content
     const extractImagesFromHtml = (html) => {
-      const regex = /<img[^>]+src=["']?(\/images\/[^"']+)["']?[^>]*>/g;
+      // Match both old and new image formats in HTML:
+      // Old: <img src="/images/filename.jpg" ...>
+      // New: <img src="images://filename.jpg" ...>
+      const regex = /<img[^>]+src=["']?(\/images\/[^"']+|images:\/\/[^"']+)["']?[^>]*>/g;
       const matches = [];
       let match;
       
@@ -164,8 +170,8 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     
     // Find images that were in the previous state but are no longer in the content
     const removedImages = previousImages.filter(img => {
-      // Only consider "/images/" paths (uploaded images, not external URLs)
-      if (!img.startsWith('/images/')) return false;
+      // Consider both /images/ paths and images:// protocol
+      if (!img.startsWith('/images/') && !img.startsWith('images://')) return false;
       return !currentImages.includes(img);
     });
     
@@ -173,8 +179,11 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     if (removedImages.length > 0) {
       removedImages.forEach(async (imagePath) => {
         try {
-          // Extract the filename from the path
-          const filename = imagePath.split('/').pop();
+          // Extract the filename from the path, handling both formats
+          const filename = imagePath.startsWith('/images/') 
+            ? imagePath.split('/').pop()
+            : imagePath.replace('images://', '');
+            
           if (filename && window.electronAPI && window.electronAPI.deleteImage) {
             await deleteImage(filename);
             showNotification('Image deleted from storage', 'info');
