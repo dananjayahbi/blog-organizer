@@ -154,6 +154,87 @@ export const BlogProvider = ({ children }) => {
     }
   };
 
+  // Archive a post
+  const archivePost = async (postId) => {
+    try {
+      // Find the post to update
+      const postToArchive = posts.find(p => p.id === postId);
+      
+      if (!postToArchive) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Update the post's status to archived
+      const updatedPost = {
+        ...postToArchive,
+        status: 'archived',
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error archiving post:', err);
+      throw err;
+    }
+  };
+
+  // Unarchive a post (restore to draft)
+  const unarchivePost = async (postId) => {
+    try {
+      // Find the post to update
+      const postToUnarchive = posts.find(p => p.id === postId);
+      
+      if (!postToUnarchive) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Update the post's status to draft
+      const updatedPost = {
+        ...postToUnarchive,
+        status: 'draft',
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error unarchiving post:', err);
+      throw err;
+    }
+  };
+
+  // Update a post's fields
+  const updatePost = async (postId, updates) => {
+    try {
+      // Find the post to update
+      const postToUpdate = posts.find(p => p.id === postId);
+      
+      if (!postToUpdate) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+      
+      // Create updated post with new fields
+      const updatedPost = {
+        ...postToUpdate,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Save the updated post
+      await savePost(updatedPost);
+      
+      return updatedPost;
+    } catch (err) {
+      console.error('Error updating post:', err);
+      throw err;
+    }
+  };
+
   // Upload an image
   const uploadImage = async () => {
     try {
@@ -195,7 +276,10 @@ export const BlogProvider = ({ children }) => {
         savePost,
         deletePost,
         uploadImage,
-        deleteImage
+        deleteImage,
+        updatePost,
+        archivePost,
+        unarchivePost
       }}
     >
       {children}
