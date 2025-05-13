@@ -111,7 +111,32 @@ export const BlogProvider = ({ children }) => {
   // Delete a post
   const deletePost = async (postId) => {
     try {
-      // Delete using Electron or localStorage
+      // First get the post to check for images
+      let postToDelete = posts.find(p => p.id === postId);
+      
+      // If post exists and has images, delete them
+      if (postToDelete && postToDelete.images && postToDelete.images.length > 0) {
+        // Filter only uploaded images (those with paths starting with /images/)
+        const uploadedImages = postToDelete.images.filter(img => 
+          typeof img === 'string' && img.startsWith('/images/')
+        );
+
+        // Delete each uploaded image
+        for (const imagePath of uploadedImages) {
+          try {
+            // Extract the filename from the path
+            const filename = imagePath.split('/').pop();
+            if (filename && window.electronAPI && window.electronAPI.deleteImage) {
+              await deleteImage(filename);
+              console.log('Image deleted:', filename);
+            }
+          } catch (error) {
+            console.error('Failed to delete image:', error);
+          }
+        }
+      }
+
+      // Delete the post using Electron or localStorage
       if (window.electronAPI) {
         await window.electronAPI.deletePost(postId);
       } else {
