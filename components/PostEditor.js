@@ -41,6 +41,8 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import CodeOffIcon from '@mui/icons-material/CodeOff';
 import TextFormatIcon from '@mui/icons-material/TextFormat';
 import NoteIcon from '@mui/icons-material/Note';
+import AddIcon from '@mui/icons-material/Add';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -80,6 +82,15 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
   // HTML snippets menu state
   const [snippetsMenuAnchor, setSnippetsMenuAnchor] = useState(null);
   const isSnippetsMenuOpen = Boolean(snippetsMenuAnchor);
+  
+  // Custom snippets state
+  const [customSnippets, setCustomSnippets] = useState([]);
+  const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
+  const [currentEditingSnippet, setCurrentEditingSnippet] = useState(null);
+  const [snippetTitle, setSnippetTitle] = useState('');
+  const [snippetIcon, setSnippetIcon] = useState('');
+  const [snippetContent, setSnippetContent] = useState('');
+  const [manageSnippetsOpen, setManageSnippetsOpen] = useState(false);
   
   // Add refs for tracking cursor position and scroll position
   const lastCursorPos = useRef(null);
@@ -615,6 +626,104 @@ const PostEditorComponent = forwardRef(({ post, onSave, onCancel }, ref) => {
     }
   }, [content, htmlContent]);
   
+  // Load custom snippets from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedSnippets = localStorage.getItem('customHtmlSnippets');
+        if (storedSnippets) {
+          setCustomSnippets(JSON.parse(storedSnippets));
+        }
+      } catch (error) {
+        console.error('Failed to load custom snippets:', error);
+      }
+    }
+  }, []);
+  
+  // Save custom snippets to localStorage
+  const saveCustomSnippets = useCallback((snippets) => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('customHtmlSnippets', JSON.stringify(snippets));
+      } catch (error) {
+        console.error('Failed to save custom snippets:', error);
+        showNotification('Failed to save custom snippets', 'error');
+      }
+    }
+  }, []);
+  
+  // Add new custom snippet
+  const handleAddNewSnippet = () => {
+    setCurrentEditingSnippet(null);
+    setSnippetTitle('');
+    setSnippetIcon('');
+    setSnippetContent('');
+    setSnippetDialogOpen(true);
+  };
+  
+  // Edit existing custom snippet
+  const handleEditSnippet = (snippet) => {
+    setCurrentEditingSnippet(snippet);
+    setSnippetTitle(snippet.title);
+    setSnippetIcon(snippet.icon || '');
+    setSnippetContent(snippet.content);
+    setSnippetDialogOpen(true);
+  };
+  
+  // Delete custom snippet
+  const handleDeleteSnippet = (snippetId) => {
+    const updatedSnippets = customSnippets.filter(s => s.id !== snippetId);
+    setCustomSnippets(updatedSnippets);
+    saveCustomSnippets(updatedSnippets);
+    showNotification('Snippet deleted successfully', 'success');
+  };
+  
+  // Save new or edited snippet
+  const handleSaveSnippet = () => {
+    if (!snippetTitle.trim()) {
+      showNotification('Please enter a title for the snippet', 'warning');
+      return;
+    }
+    
+    if (!snippetContent.trim()) {
+      showNotification('Please enter HTML content for the snippet', 'warning');
+      return;
+    }
+    
+    let updatedSnippets;
+    
+    if (currentEditingSnippet) {
+      // Update existing snippet
+      updatedSnippets = customSnippets.map(s => 
+        s.id === currentEditingSnippet.id 
+          ? { ...s, title: snippetTitle.trim(), icon: snippetIcon.trim(), content: snippetContent.trim() }
+          : s
+      );
+      showNotification('Snippet updated successfully', 'success');
+    } else {
+      // Add new snippet
+      const newSnippet = {
+        id: Date.now().toString(),
+        title: snippetTitle.trim(),
+        icon: snippetIcon.trim(),
+        content: snippetContent.trim()
+      };
+      updatedSnippets = [...customSnippets, newSnippet];
+      showNotification('New snippet added successfully', 'success');
+    }
+    
+    setCustomSnippets(updatedSnippets);
+    saveCustomSnippets(updatedSnippets);
+    setSnippetDialogOpen(false);
+  };
+  
+  // Open manage snippets dialog
+  const handleManageSnippets = () => {
+    setManageSnippetsOpen(true);
+    // Close the dropdown menu
+    setSnippetsMenuAnchor(null);
+  };
+  
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
       {/* Title input */}
@@ -1008,6 +1117,74 @@ function example() {
           </ListItemIcon>
           <ListItemText>Collapsible Section</ListItemText>
         </MenuItem>
+
+        {/* Display custom snippets */}
+        {customSnippets.length > 0 && (
+          <>
+            <Divider />
+            <Typography variant="caption" sx={{ px: 2, py: 1, display: 'block', color: 'text.secondary' }}>
+              Custom Snippets
+            </Typography>
+            
+            {customSnippets.map((snippet) => (
+              <MenuItem key={snippet.id} onClick={() => {
+                insertAtCursor(snippet.content);
+                setSnippetsMenuAnchor(null);
+                showNotification(`${snippet.title} snippet inserted!`, 'success');
+              }}>
+                <ListItemIcon>
+                  {snippet.icon ? (
+                    // Try to use dynamically imported icon or fallback to default
+                    (() => {
+                      try {
+                        // Simple approach to load Material UI icons
+                        const iconMap = {
+                          code: CodeIcon,
+                          note: NoteIcon, 
+                          image: ImageIcon,
+                          link: LinkIcon,
+                          text: TextFormatIcon,
+                          table: TableChartIcon,
+                          build: BuildIcon,
+                          add: AddIcon,
+                          delete: DeleteIcon,
+                          edit: EditIcon,
+                          save: SaveIcon,
+                          preview: PreviewIcon
+                        };
+                        
+                        const IconComponent = iconMap[snippet.icon] || NoteIcon;
+                        return <IconComponent fontSize="small" />;
+                      } catch (error) {
+                        return <NoteIcon fontSize="small" />;
+                      }
+                    })()
+                  ) : (
+                    <NoteIcon fontSize="small" />
+                  )}
+                </ListItemIcon>
+                <ListItemText>{snippet.title}</ListItemText>
+              </MenuItem>
+            ))}
+          </>
+        )}
+        
+        <Divider />
+        
+        {/* Manage snippets options */}
+        <MenuItem onClick={handleManageSnippets}>
+          <ListItemIcon>
+            <MoreVertIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Manage Snippets...</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={handleAddNewSnippet}>
+          <ListItemIcon>
+            <AddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Add New Snippet...</ListItemText>
+        </MenuItem>
       </Menu>
       
       {/* Notifications */}
@@ -1039,6 +1216,141 @@ function example() {
           Save
         </Button>
       </Box>
+      
+      {/* Manage Snippets Dialog */}
+      <Dialog
+        open={manageSnippetsOpen}
+        onClose={() => setManageSnippetsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Manage HTML Snippets</DialogTitle>
+        <DialogContent>
+          <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+            {customSnippets.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                No custom snippets found. Add your first snippet!
+              </Typography>
+            ) : (
+              customSnippets.map((snippet) => (
+                <Paper 
+                  key={snippet.id} 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2, 
+                    mb: 1, 
+                    borderRadius: 1,
+                    position: 'relative',
+                    '&:hover': {
+                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                    }
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {snippet.title}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleEditSnippet(snippet)}
+                      sx={{ mr: 1 }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleDeleteSnippet(snippet.id)}
+                      color="error"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  <Divider sx={{ mb: 1 }} />
+                  <Box 
+                    sx={{ 
+                      p: 1, 
+                      borderRadius: 1, 
+                      backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: snippet.content }} 
+                      style={{ whiteSpace: 'nowrap' }}
+                    />
+                  </Box>
+                </Paper>
+              ))
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManageSnippetsOpen(false)}>Close</Button>
+          <Button 
+            onClick={handleAddNewSnippet} 
+            variant="contained" 
+            color="primary"
+            startIcon={<AddIcon />}
+          >
+            Add New Snippet
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snippet Editor Dialog */}
+      <Dialog
+        open={snippetDialogOpen}
+        onClose={() => setSnippetDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{currentEditingSnippet ? 'Edit Snippet' : 'Add New Snippet'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Snippet Title"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetTitle}
+            onChange={(e) => setSnippetTitle(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Icon (optional)"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetIcon}
+            onChange={(e) => setSnippetIcon(e.target.value)}
+            helperText="Enter a Material Icons name, e.g., 'code'"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="HTML Content"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={snippetContent}
+            onChange={(e) => setSnippetContent(e.target.value)}
+            multiline
+            rows={4}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSnippetDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleSaveSnippet} 
+            variant="contained" 
+            color="primary"
+          >
+            Save Snippet
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 });
